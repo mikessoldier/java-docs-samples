@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright 2015 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,6 @@ package com.example.endpoints;
 
 import com.example.endpoints.message.MessageTranslator;
 import com.example.endpoints.message.MessageV2Translator;
-
 import java.io.IOException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;

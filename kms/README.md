@@ -1,33 +1,35 @@
-# Cloud Key Management Service
+# Google Cloud KMS
 
 <a href="https://console.cloud.google.com/cloudshell/open?git_repo=https://github.com/GoogleCloudPlatform/java-docs-samples&page=editor&open_in_editor=kms/README.md">
 <img alt="Open in Cloud Shell" src ="http://gstatic.com/cloudssh/images/open-btn.png"></a>
 
-Google [Cloud Key Management Service](https://cloud.google.com/kms/) is a
-cloud-hosted key management service that lets you manage encryption for your
-cloud services the same way you do on-premise. You can generate, use, rotate and
-destroy AES-256 encryption keys. These sample Java applications demonstrate
-how to access the KMS API using the Google Java API Client Libraries.
+Google [Cloud KMS](https://cloud.google.com/kms/) is a cloud-hosted key
+management service for encrypting, decrypting, signing, and verifying data.
+These sample Java applications demonstrate how to access the Cloud KMS API using the
+Google Java API Client Libraries.
 
-## Quickstart
+## Prerequisites
 
-Install [Maven](http://maven.apache.org/).
+### Enable the API
 
-Build your project with:
+You must [enable the Google Cloud KMS API](https://console.cloud.google.com/flows/enableapi?apiid=cloudkms.googleapis.com) for your project in order to use these samples
 
-    mvn clean compile assembly:single
+### Set Environment Variables
 
-You can run the quickstart with:
+You must set your project ID in order to run the tests
 
-    java -cp target/kms-samples-1.0.0-jar-with-dependencies.jar \
-        com.example.Quickstart [your-project-id] [your-location]
+```
+$ export GOOGLE_CLOUD_PROJECT="<your-project-id-here>"
+```
 
-and can see the available snippet commands with:
+### Grant Permissions
 
-    java -cp target/kms-samples-1.0.0-jar-with-dependencies.jar \
-        com.example.Snippets
+You must ensure that the [user account or service account](https://cloud.google.com/iam/docs/service-accounts#differences_between_a_service_account_and_a_user_account) you used to authorize your gcloud session has the proper permissions to edit KMS resources for your project. In the Cloud Console under IAM, add the following roles to the project whose service account you're using to test:
 
-For example:
+* Cloud KMS Admin
+* Cloud KMS CryptoKey Encrypter/Decrypter
+* Cloud KMS Importer
+* Cloud KMS CryptoKey Public Key Viewer
+* Cloud KMS CryptoKey Signer/Verifier
 
-    java -cp target/kms-samples-1.0.0-jar-with-dependencies.jar \
-        com.example.Snippets createKeyRing -p [your-project-id] [your-location] myFirstKeyRing
+More information can be found in the [Google KMS Docs](https://cloud.google.com/kms/docs/reference/permissions-and-roles)

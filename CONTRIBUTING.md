@@ -1,138 +1,46 @@
-# How to become a contributor and submit your own code
+# How to Contribute
 
-* [Contributor License Agreements](#Contributor-License-Agreements)
-* [Contributing a Patch](#Contributing-a-Patch)
-* [Contributing a new sample](#Contributing-a-new-sample)
-* [Build Tools](#build-tools)
-* [Integration Testing](#testing)
-* [Style](#Style)
+We'd love to accept your patches and contributions to this project. There are
+just a few small guidelines you need to follow.
 
-## Contributor License Agreements
+In this repository, we are looking for patches that:
+* Improve readibility
+* Fix bugs
+* Improve clarity and understandability
 
-We'd love to accept your sample apps and patches! Before we can take them, we
-have to jump a couple of legal hurdles.
+If you want to contribute a full sample / tutorial, please consider contributing to our [community pages](https://cloud.google.com/community) [[How To](https://cloud.google.com/community/tutorials/write)] ([code](https://github.com/GoogleCloudPlatform/community)).
 
-Please fill out either the individual or corporate Contributor License Agreement
-(CLA).
+## Contributor License Agreement
 
-  * If you are an individual writing original source code and you're sure you
-    own the intellectual property, then you'll need to sign an [individual
-    CLA](https://developers.google.com/open-source/cla/individual).
-  * If you work for a company that wants to allow you to contribute your work,
-    then you'll need to sign a [corporate
-    CLA](https://developers.google.com/open-source/cla/corporate).
+Contributions to this project must be accompanied by a Contributor License
+Agreement. You (or your employer) retain the copyright to your contribution;
+this simply gives us permission to use and redistribute your contributions as
+part of the project. Head over to <https://cla.developers.google.com/> to see
+your current agreements on file or to sign a new one.
 
-Follow either of the two links above to access the appropriate CLA and
-instructions for how to sign and return it. Once we receive it, we'll be able to
-accept your pull requests.
-
-## Contributing a Patch
-
-1. Submit an issue describing your proposed change to the repo in question.
-1. The repo owner will respond to your issue promptly.
-1. If your proposed change is accepted, and you haven't already done so, sign a
-   Contributor License Agreement (see details above).
-1. Fork the desired repo, develop and test your code changes.
-1. Ensure that your code adheres to the existing style in the sample to which
-   you are contributing.
-1. Ensure that your code has an appropriate set of unit tests which all pass.
-1. Submit a pull request.
-
-## Contributing a new sample
-
-1. App Engine Standard samples all go into `/appengine` (java 7) or `/java8-appengine` (Java 8) (if you're contributing a group of samples,
-please put the App Engine Standard sample into `/appengine` and provide a link in both `README.md`'s for
-the project for the additional sample.
-
-1. App Engine Flexible samples all go into `/flexible`
-
-1. Technology samples go into the project root.
-
-
-## Build Tools
-
-For instructions regarding development environment setup, please visit [the documentation](https://cloud.google.com/java/docs/setup). All new samples should build and run integration tests with both [Maven](https://maven.apache.org/) and [Gradle](https://gradle.org/).
-
-## Testing
-
-All samples must have Integration Tests (ie. They need to run against a real service) that run with
-`mvn verify` & `gradle build test`.  If we need to enable an API, let us know.
-
-Your `build.gradle` should have the following section:
-
-```groovy
-
-test {
-  useJUnit()
-  testLogging.showStandardStreams = true
-  beforeTest { descriptor ->
-     logger.lifecycle("test: " + descriptor + "  Running")
-  }
-
-  onOutput { descriptor, event ->
-     logger.lifecycle("test: " + descriptor + ": " + event.message )
-  }
-  afterTest { descriptor, result ->
-    logger.lifecycle("test: " + descriptor + ": " + result )
-  }
-}
-```
-
-### Keys and Secrets
-
-Please contact a Java DPE for instructions before adding to Travis.
+You generally only need to submit a CLA once, so if you've already submitted one
+(even if it was for a different project), you probably don't need to do it
+again.
 
 ## Style
 
-Samples in this repository follow the [Google Java Style Guide][java-style].
-This is enforced using the [Maven Checkstyle Plugin][checkstyle-plugin].
+All code should follow the [Sample Format Guidelines](SAMPLE_FORMAT.md)
 
-[java-style]: https://google.github.io/styleguide/javaguide.html
-[checkstyle-plugin]: https://maven.apache.org/plugins/maven-checkstyle-plugin/
+## Code reviews
 
-Use the [google-java-format][google-java-format] tool to automatically reformat
-your source code to adhere to the style guide. It is available as a command-line
-tool or IntelliJ plugin.
+Change to samples should be reviewed by both a product stakeholder for accuracy as well as a member
+of java-samples-reviewers@ to ensure the sample format and best practices for Java are used.
 
-[google-java-format]: https://github.com/google/google-java-format
+All submissions, including submissions by project members, require review. We
+use GitHub pull requests for this purpose. Consult
+[GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
+information on using pull requests.
 
-### Running the Linter
+## Community Guidelines
 
-To run the checkstyle & ErrorProne plugins on an existing sample, run
+This project follows 
+[Google's Open Source Community Guidelines](https://opensource.google/conduct/).
 
-```shell
-mvn clean verify -DskipTests
-```
+## Abandoned PR's
 
-The `-DskipTests` is optional. It is useful if you want to verify that your code
-builds and adheres to the style guide without waiting for tests to complete.
-
-### Adding the Checkstyle Plugin to New Samples
-
-The samples in this repository use a common parent POM to define plugins used
-for linting and testing. Add the following to your sample POM to ensure that it
-uses the common Checkstyle configuration.
-
-```xml
-<parent>
-  <groupId>com.google.cloud</groupId>
-  <artifactId>doc-samples</artifactId>
-  <version>1.0.0</version>
-  <!-- Change relativePath to point to the root directory. -->
-  <relativePath>../..</relativePath>
-</parent>
-```
-
-This is just used for testing. The sample should build without a parent defined.
-
-### Parsing Command-Line Arguments in Samples
-
-Simple command-line samples with only positional arguments should use the
-`args` argument to `main(String... args)` directly. A command-line sample
-which has optional parameters should use the [Apache Commons
-CLI](https://commons.apache.org/proper/commons-cli/index.html) library.
-
-Dataflow samples are an exception to this rule, since Dataflow has [its own
-method for setting custom
-options](https://cloud.google.com/dataflow/pipelines/specifying-exec-params)
-
+PR's with no activity for over a month will be considered abandoned and will be closed.

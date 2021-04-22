@@ -19,7 +19,6 @@ package com.google.cloud.language.samples;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.cloud.language.v1beta2.Sentiment;
-
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import org.junit.Before;
@@ -27,15 +26,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Integration (system) tests for {@link Analyze}.
- */
+/** Integration (system) tests for {@link Analyze}. */
 @RunWith(JUnit4.class)
 @SuppressWarnings("checkstyle:abbreviationaswordinname")
 public class AnalyzeBetaIT {
 
   private static final String PROJECT_ID = System.getenv("GOOGLE_CLOUD_PROJECT");
-  private static final String BUCKET = PROJECT_ID;
 
   private ByteArrayOutputStream bout;
   private PrintStream out;
@@ -49,24 +45,25 @@ public class AnalyzeBetaIT {
 
   @Test
   public void analyzeSentiment_returnPositiveGerman() throws Exception {
-    Sentiment sentiment = AnalyzeBeta.analyzeSentimentText(
-        "Ich hatte die schönste Erfahrung mit euch allen.", "DE");
+    Sentiment sentiment =
+        AnalyzeBeta.analyzeSentimentText("Ich hatte die schönste Erfahrung mit euch allen.", "DE");
     assertThat(sentiment.getMagnitude()).isGreaterThan(0.0F);
     assertThat(sentiment.getScore()).isGreaterThan(0.0F);
   }
 
   @Test
   public void analyzeCategoriesInTextReturnsExpectedResult() throws Exception {
-    AnalyzeBeta.classifyText("Android is a mobile operating system developed by Google, "
-        + "based on the Linux kernel and designed primarily for touchscreen "
-        + "mobile devices such as smartphones and tablets.");
+    AnalyzeBeta.classifyText(
+        "Android is a mobile operating system developed by Google, "
+            + "based on the Linux kernel and designed primarily for touchscreen "
+            + "mobile devices such as smartphones and tablets.");
     String got = bout.toString();
     assertThat(got).contains("Computers & Electronics");
   }
 
   @Test
   public void analyzeCategoriesInFileReturnsExpectedResult() throws Exception {
-    String gcsFile = "gs://" + PROJECT_ID + "/natural-language/android_text.txt";
+    String gcsFile = "gs://cloud-samples-data/language/android.txt";
     AnalyzeBeta.classifyFile(gcsFile);
     String got = bout.toString();
     assertThat(got).contains("Computers & Electronics");

@@ -17,6 +17,7 @@
 package com.google.cloud.vision.samples.facedetect;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static org.junit.Assert.fail;
 
 import com.google.api.services.vision.v1.model.FaceAnnotation;
@@ -28,9 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Integration (system) tests for {@link FaceDetectApp}.
- */
+/** Integration (system) tests for {@link FaceDetectApp}. */
 @RunWith(JUnit4.class)
 @SuppressWarnings("checkstyle:abbreviationaswordinname")
 public class FaceDetectAppIT {
@@ -38,20 +37,21 @@ public class FaceDetectAppIT {
 
   private FaceDetectApp appUnderTest;
 
-  @Before public void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     appUnderTest = new FaceDetectApp(FaceDetectApp.getVisionService());
   }
 
-  @Test public void detectFaces_withFace_returnsAtLeastOneFace() throws Exception {
-    List<FaceAnnotation> faces =
-        appUnderTest.detectFaces(Paths.get("data/face.jpg"), MAX_RESULTS);
+  @Test
+  public void detectFaces_withFace_returnsAtLeastOneFace() throws Exception {
+    List<FaceAnnotation> faces = appUnderTest.detectFaces(Paths.get("data/face.jpg"), MAX_RESULTS);
 
-    assertThat(faces).named("face.jpg faces").isNotEmpty();
-    assertThat(faces.get(0).getFdBoundingPoly().getVertices())
-        .isNotEmpty();
+    assertWithMessage("face.jpg faces").that(faces).isNotEmpty();
+    assertThat(faces.get(0).getFdBoundingPoly().getVertices()).isNotEmpty();
   }
 
-  @Test public void detectFaces_badImage_throwsException() throws Exception {
+  @Test
+  public void detectFaces_badImage_throwsException() throws Exception {
     try {
       appUnderTest.detectFaces(Paths.get("data/bad.txt"), MAX_RESULTS);
       fail("Expected IOException");

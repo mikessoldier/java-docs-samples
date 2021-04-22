@@ -20,16 +20,32 @@ import static com.google.cloud.spanner.TransactionRunner.TransactionCallable;
 import static com.google.cloud.spanner.Type.StructField;
 
 import com.google.api.gax.longrunning.OperationFuture;
+import com.google.api.gax.longrunning.OperationSnapshot;
+import com.google.api.gax.paging.Page;
+import com.google.api.gax.retrying.RetryingFuture;
+import com.google.api.gax.rpc.StatusCode;
+import com.google.cloud.ByteArray;
+import com.google.cloud.Date;
+import com.google.cloud.Timestamp;
+import com.google.cloud.spanner.Backup;
+import com.google.cloud.spanner.BackupId;
 import com.google.cloud.spanner.Database;
 import com.google.cloud.spanner.DatabaseAdminClient;
 import com.google.cloud.spanner.DatabaseClient;
 import com.google.cloud.spanner.DatabaseId;
+import com.google.cloud.spanner.Instance;
+import com.google.cloud.spanner.InstanceAdminClient;
+import com.google.cloud.spanner.InstanceId;
 import com.google.cloud.spanner.Key;
+import com.google.cloud.spanner.KeyRange;
 import com.google.cloud.spanner.KeySet;
 import com.google.cloud.spanner.Mutation;
+import com.google.cloud.spanner.Options;
 import com.google.cloud.spanner.ReadOnlyTransaction;
+import com.google.cloud.spanner.RestoreInfo;
 import com.google.cloud.spanner.ResultSet;
 import com.google.cloud.spanner.Spanner;
+import com.google.cloud.spanner.SpannerBatchUpdateException;
 import com.google.cloud.spanner.SpannerException;
 import com.google.cloud.spanner.SpannerExceptionFactory;
 import com.google.cloud.spanner.SpannerOptions;
@@ -39,13 +55,26 @@ import com.google.cloud.spanner.TimestampBound;
 import com.google.cloud.spanner.TransactionContext;
 import com.google.cloud.spanner.Type;
 import com.google.cloud.spanner.Value;
+import com.google.common.io.BaseEncoding;
+import com.google.longrunning.Operation;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.spanner.admin.database.v1.CreateBackupMetadata;
 import com.google.spanner.admin.database.v1.CreateDatabaseMetadata;
+import com.google.spanner.admin.database.v1.OptimizeRestoredDatabaseMetadata;
+import com.google.spanner.admin.database.v1.RestoreDatabaseMetadata;
 import com.google.spanner.admin.database.v1.UpdateDatabaseDdlMetadata;
+import com.google.spanner.v1.ExecuteSqlRequest.QueryOptions;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.threeten.bp.LocalDate;
+import org.threeten.bp.LocalDateTime;
+import org.threeten.bp.OffsetDateTime;
+import org.threeten.bp.temporal.ChronoField;
 
 /**
  * Example code for using the Cloud Spanner API. This example demonstrates all the common operations
@@ -59,8 +88,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>Writing data using a read-write transaction.
  *   <li>Using an index to read and execute SQL queries over data.
  *   <li>Using commit timestamp for tracking when a record was last updated.
- *   <li>Using Google API Extensions for Java to make thread-safe requests via
- *       long-running operations. http://googleapis.github.io/gax-java/
+ *   <li>Using Google API Extensions for Java to make thread-safe requests via long-running
+ *       operations. http://googleapis.github.io/gax-java/
  * </ul>
  */
 public class SpannerSample {
@@ -109,6 +138,52 @@ public class SpannerSample {
     }
   }
 
+  /** Class to contain venue sample data. */
+  static class Venue {
+
+    final long venueId;
+    final String venueName;
+    final String venueInfo;
+    final long capacity;
+    final Value availableDates;
+    final String lastContactDate;
+    final boolean outdoorVenue;
+    final float popularityScore;
+    final BigDecimal revenue;
+
+    Venue(
+        long venueId,
+        String venueName,
+        String venueInfo,
+        long capacity,
+        Value availableDates,
+        String lastContactDate,
+        boolean outdoorVenue,
+        float popularityScore,
+        BigDecimal revenue) {
+      this.venueId = venueId;
+      this.venueName = venueName;
+      this.venueInfo = venueInfo;
+      this.capacity = capacity;
+      this.availableDates = availableDates;
+      this.lastContactDate = lastContactDate;
+      this.outdoorVenue = outdoorVenue;
+      this.popularityScore = popularityScore;
+      this.revenue = revenue;
+    }
+  }
+
+  /** Get a database id to restore a backup to from the sample database id. */
+  static String createRestoredSampleDbId(DatabaseId database) {
+    int index = database.getDatabase().indexOf('-');
+    String prefix = database.getDatabase().substring(0, index);
+    String restoredDbId = database.getDatabase().replace(prefix, "restored");
+    if (restoredDbId.length() > 30) {
+      restoredDbId = restoredDbId.substring(0, 30);
+    }
+    return restoredDbId;
+  }
+
   // [START spanner_insert_data]
   static final List<Singer> SINGERS =
       Arrays.asList(
@@ -135,6 +210,58 @@ public class SpannerSample {
           new Performance(2, 42, "2017-12-23", 7000));
   // [END spanner_insert_data_with_timestamp_column]
 
+  // [START spanner_insert_datatypes_data]
+  static Value availableDates1 =
+      Value.dateArray(
+          Arrays.asList(
+              Date.parseDate("2020-12-01"),
+              Date.parseDate("2020-12-02"),
+              Date.parseDate("2020-12-03")));
+  static Value availableDates2 =
+      Value.dateArray(
+          Arrays.asList(
+              Date.parseDate("2020-11-01"),
+              Date.parseDate("2020-11-05"),
+              Date.parseDate("2020-11-15")));
+  static Value availableDates3 =
+      Value.dateArray(Arrays.asList(Date.parseDate("2020-10-01"), Date.parseDate("2020-10-07")));
+  static String exampleBytes1 = BaseEncoding.base64().encode("Hello World 1".getBytes());
+  static String exampleBytes2 = BaseEncoding.base64().encode("Hello World 2".getBytes());
+  static String exampleBytes3 = BaseEncoding.base64().encode("Hello World 3".getBytes());
+  static final List<Venue> VENUES =
+      Arrays.asList(
+          new Venue(
+              4,
+              "Venue 4",
+              exampleBytes1,
+              1800,
+              availableDates1,
+              "2018-09-02",
+              false,
+              0.85543f,
+              new BigDecimal("215100.10")),
+          new Venue(
+              19,
+              "Venue 19",
+              exampleBytes2,
+              6300,
+              availableDates2,
+              "2019-01-15",
+              true,
+              0.98716f,
+              new BigDecimal("1200100.00")),
+          new Venue(
+              42,
+              "Venue 42",
+              exampleBytes3,
+              3000,
+              availableDates3,
+              "2018-10-01",
+              false,
+              0.72598f,
+              new BigDecimal("390650.99")));
+  // [END spanner_insert_datatypes_data]
+
   // [START spanner_create_database]
   static void createDatabase(DatabaseAdminClient dbAdminClient, DatabaseId id) {
     OperationFuture<Database, CreateDatabaseMetadata> op =
@@ -142,17 +269,17 @@ public class SpannerSample {
             id.getInstanceId().getInstance(),
             id.getDatabase(),
             Arrays.asList(
-                "CREATE TABLE Singers (\n"
-                    + "  SingerId   INT64 NOT NULL,\n"
-                    + "  FirstName  STRING(1024),\n"
-                    + "  LastName   STRING(1024),\n"
-                    + "  SingerInfo BYTES(MAX)\n"
+                "CREATE TABLE Singers ("
+                    + "  SingerId   INT64 NOT NULL,"
+                    + "  FirstName  STRING(1024),"
+                    + "  LastName   STRING(1024),"
+                    + "  SingerInfo BYTES(MAX)"
                     + ") PRIMARY KEY (SingerId)",
-                "CREATE TABLE Albums (\n"
-                    + "  SingerId     INT64 NOT NULL,\n"
-                    + "  AlbumId      INT64 NOT NULL,\n"
-                    + "  AlbumTitle   STRING(MAX)\n"
-                    + ") PRIMARY KEY (SingerId, AlbumId),\n"
+                "CREATE TABLE Albums ("
+                    + "  SingerId     INT64 NOT NULL,"
+                    + "  AlbumId      INT64 NOT NULL,"
+                    + "  AlbumTitle   STRING(MAX)"
+                    + ") PRIMARY KEY (SingerId, AlbumId),"
                     + "  INTERLEAVE IN PARENT Singers ON DELETE CASCADE"));
     try {
       // Initiate the request which returns an OperationFuture.
@@ -176,13 +303,13 @@ public class SpannerSample {
             id.getInstanceId().getInstance(),
             id.getDatabase(),
             Arrays.asList(
-                "CREATE TABLE Performances (\n"
-                    + "  SingerId     INT64 NOT NULL,\n"
-                    + "  VenueId      INT64 NOT NULL,\n"
-                    + "  EventDate    Date,\n"
-                    + "  Revenue      INT64, \n"
-                    + "  LastUpdateTime TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)\n"
-                    + ") PRIMARY KEY (SingerId, VenueId, EventDate),\n"
+                "CREATE TABLE Performances ("
+                    + "  SingerId     INT64 NOT NULL,"
+                    + "  VenueId      INT64 NOT NULL,"
+                    + "  EventDate    Date,"
+                    + "  Revenue      INT64, "
+                    + "  LastUpdateTime TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)"
+                    + ") PRIMARY KEY (SingerId, VenueId, EventDate),"
                     + "  INTERLEAVE IN PARENT Singers ON DELETE CASCADE"),
             null);
     try {
@@ -255,49 +382,54 @@ public class SpannerSample {
   static void deleteExampleData(DatabaseClient dbClient) {
     List<Mutation> mutations = new ArrayList<>();
 
-    // KeySet.all() can be used to delete all the rows in a table.
-    mutations.add(Mutation.delete("Albums", KeySet.all()));
+    // KeySet.Builder can be used to delete a specific set of rows.
+    // Delete the Albums with the key values (2,1) and (2,3).
+    mutations.add(
+        Mutation.delete(
+            "Albums", KeySet.newBuilder().addKey(Key.of(2, 1)).addKey(Key.of(2, 3)).build()));
 
-    // KeySet.singleKey() can be used to delete one row at a time.
-    for (Singer singer : SINGERS) {
-      mutations.add(
-          Mutation.delete("Singers", 
-              KeySet.singleKey(Key.newBuilder().append(singer.singerId).build())));
-    }
+    // KeyRange can be used to delete rows with a key in a specific range.
+    // Delete a range of rows where the column key is >=3 and <5
+    mutations.add(
+        Mutation.delete("Singers", KeySet.range(KeyRange.closedOpen(Key.of(3), Key.of(5)))));
+
+    // KeySet.all() can be used to delete all the rows in a table.
+    // Delete remaining Singers rows, which will also delete the remaining Albums rows since it was
+    // defined with ON DELETE CASCADE.
+    mutations.add(Mutation.delete("Singers", KeySet.all()));
 
     dbClient.write(mutations);
     System.out.printf("Records deleted.\n");
-  } 
+  }
   // [END spanner_delete_data]
 
   // [START spanner_query_data]
   static void query(DatabaseClient dbClient) {
-    // singleUse() can be used to execute a single read or query against Cloud Spanner.
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
-            .singleUse()
-            .executeQuery(Statement.of("SELECT SingerId, AlbumId, AlbumTitle FROM Albums"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+            .singleUse() // Execute a single read or query against Cloud Spanner.
+            .executeQuery(Statement.of("SELECT SingerId, AlbumId, AlbumTitle FROM Albums"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+      }
     }
   }
   // [END spanner_query_data]
 
   // [START spanner_read_data]
   static void read(DatabaseClient dbClient) {
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
             .read(
                 "Albums",
-                // KeySet.all() can be used to read all rows in a table. KeySet exposes other
-                // methods to read only a subset of the table.
-                KeySet.all(),
-                Arrays.asList("SingerId", "AlbumId", "AlbumTitle"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+                KeySet.all(), // Read all rows in a table.
+                Arrays.asList("SingerId", "AlbumId", "AlbumTitle"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+      }
     }
   }
   // [END spanner_read_data]
@@ -305,12 +437,11 @@ public class SpannerSample {
   // [START spanner_add_column]
   static void addMarketingBudget(DatabaseAdminClient adminClient, DatabaseId dbId) {
     OperationFuture<Void, UpdateDatabaseDdlMetadata> op =
-        adminClient
-          .updateDatabaseDdl(
-              dbId.getInstanceId().getInstance(),
-              dbId.getDatabase(),
-              Arrays.asList("ALTER TABLE Albums ADD COLUMN MarketingBudget INT64"),
-              null);
+        adminClient.updateDatabaseDdl(
+            dbId.getInstanceId().getInstance(),
+            dbId.getDatabase(),
+            Arrays.asList("ALTER TABLE Albums ADD COLUMN MarketingBudget INT64"),
+            null);
     try {
       // Initiate the request which returns an OperationFuture.
       op.get();
@@ -371,12 +502,12 @@ public class SpannerSample {
                 // Transaction will only be committed if this condition still holds at the time of
                 // commit. Otherwise it will be aborted and the callable will be rerun by the
                 // client library.
-                if (album2Budget >= 300000) {
+                long transfer = 200000;
+                if (album2Budget >= transfer) {
                   long album1Budget =
                       transaction
                           .readRow("Albums", Key.of(1, 1), Arrays.asList("MarketingBudget"))
                           .getLong(0);
-                  long transfer = 200000;
                   album1Budget += transfer;
                   album2Budget -= transfer;
                   transaction.buffer(
@@ -407,19 +538,21 @@ public class SpannerSample {
   // [START spanner_query_data_with_new_column]
   static void queryMarketingBudget(DatabaseClient dbClient) {
     // Rows without an explicit value for MarketingBudget will have a MarketingBudget equal to
-    // null.
-    ResultSet resultSet =
+    // null. A try-with-resource block is used to automatically release resources held by
+    // ResultSet.
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
-            .executeQuery(Statement.of("SELECT SingerId, AlbumId, MarketingBudget FROM Albums"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s\n",
-          resultSet.getLong("SingerId"),
-          resultSet.getLong("AlbumId"),
-          // We check that the value is non null. ResultSet getters can only be used to retrieve
-          // non null values.
-          resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+            .executeQuery(Statement.of("SELECT SingerId, AlbumId, MarketingBudget FROM Albums"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n",
+            resultSet.getLong("SingerId"),
+            resultSet.getLong("AlbumId"),
+            // We check that the value is non null. ResultSet getters can only be used to retrieve
+            // non null values.
+            resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+      }
     }
   }
   // [END spanner_query_data_with_new_column]
@@ -427,12 +560,11 @@ public class SpannerSample {
   // [START spanner_create_index]
   static void addIndex(DatabaseAdminClient adminClient, DatabaseId dbId) {
     OperationFuture<Void, UpdateDatabaseDdlMetadata> op =
-        adminClient
-          .updateDatabaseDdl(
-              dbId.getInstanceId().getInstance(),
-              dbId.getDatabase(),
-              Arrays.asList("CREATE INDEX AlbumsByAlbumTitle ON Albums(AlbumTitle)"),
-              null);
+        adminClient.updateDatabaseDdl(
+            dbId.getInstanceId().getInstance(),
+            dbId.getDatabase(),
+            Arrays.asList("CREATE INDEX AlbumsByAlbumTitle ON Albums(AlbumTitle)"),
+            null);
     try {
       // Initiate the request which returns an OperationFuture.
       op.get();
@@ -457,8 +589,8 @@ public class SpannerSample {
             // We use FORCE_INDEX hint to specify which index to use. For more details see
             // https://cloud.google.com/spanner/docs/query-syntax#from-clause
             .newBuilder(
-                "SELECT AlbumId, AlbumTitle, MarketingBudget\n"
-                    + "FROM Albums@{FORCE_INDEX=AlbumsByAlbumTitle}\n"
+                "SELECT AlbumId, AlbumTitle, MarketingBudget "
+                    + "FROM Albums@{FORCE_INDEX=AlbumsByAlbumTitle} "
                     + "WHERE AlbumTitle >= @StartTitle AND AlbumTitle < @EndTitle")
             // We use @BoundParameters to help speed up frequently executed queries.
             //  For more details see https://cloud.google.com/spanner/docs/sql-best-practices
@@ -467,30 +599,31 @@ public class SpannerSample {
             .bind("EndTitle")
             .to("Goo")
             .build();
-
-    ResultSet resultSet = dbClient.singleUse().executeQuery(statement);
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %s %s\n",
-          resultSet.getLong("AlbumId"),
-          resultSet.getString("AlbumTitle"),
-          resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong("AlbumId"),
+            resultSet.getString("AlbumTitle"),
+            resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+      }
     }
   }
   // [END spanner_query_data_with_index]
 
   // [START spanner_read_data_with_index]
   static void readUsingIndex(DatabaseClient dbClient) {
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
             .readUsingIndex(
                 "Albums",
                 "AlbumsByAlbumTitle",
                 KeySet.all(),
-                Arrays.asList("AlbumId", "AlbumTitle"));
-    while (resultSet.next()) {
-      System.out.printf("%d %s\n", resultSet.getLong(0), resultSet.getString(1));
+                Arrays.asList("AlbumId", "AlbumTitle"))) {
+      while (resultSet.next()) {
+        System.out.printf("%d %s\n", resultSet.getLong(0), resultSet.getString(1));
+      }
     }
   }
   // [END spanner_read_data_with_index]
@@ -498,14 +631,13 @@ public class SpannerSample {
   // [START spanner_create_storing_index]
   static void addStoringIndex(DatabaseAdminClient adminClient, DatabaseId dbId) {
     OperationFuture<Void, UpdateDatabaseDdlMetadata> op =
-        adminClient
-          .updateDatabaseDdl(
-              dbId.getInstanceId().getInstance(),
-              dbId.getDatabase(),
-              Arrays.asList(
-                  "CREATE INDEX AlbumsByAlbumTitle2 ON Albums(AlbumTitle) "
-                      + "STORING (MarketingBudget)"),
-              null); 
+        adminClient.updateDatabaseDdl(
+            dbId.getInstanceId().getInstance(),
+            dbId.getDatabase(),
+            Arrays.asList(
+                "CREATE INDEX AlbumsByAlbumTitle2 ON Albums(AlbumTitle) "
+                    + "STORING (MarketingBudget)"),
+            null);
     try {
       // Initiate the request which returns an OperationFuture.
       op.get();
@@ -526,20 +658,21 @@ public class SpannerSample {
   // [START spanner_read_data_with_storing_index]
   static void readStoringIndex(DatabaseClient dbClient) {
     // We can read MarketingBudget also from the index since it stores a copy of MarketingBudget.
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
             .readUsingIndex(
                 "Albums",
                 "AlbumsByAlbumTitle2",
                 KeySet.all(),
-                Arrays.asList("AlbumId", "AlbumTitle", "MarketingBudget"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %s %s\n",
-          resultSet.getLong(0),
-          resultSet.getString(1),
-          resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+                Arrays.asList("AlbumId", "AlbumTitle", "MarketingBudget"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong(0),
+            resultSet.getString(1),
+            resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"));
+      }
     }
   }
   // [END spanner_read_data_with_storing_index]
@@ -557,13 +690,14 @@ public class SpannerSample {
             "%d %d %s\n",
             queryResultSet.getLong(0), queryResultSet.getLong(1), queryResultSet.getString(2));
       }
-      ResultSet readResultSet =
+      try (ResultSet readResultSet =
           transaction.read(
-              "Albums", KeySet.all(), Arrays.asList("SingerId", "AlbumId", "AlbumTitle"));
-      while (readResultSet.next()) {
-        System.out.printf(
-            "%d %d %s\n",
-            readResultSet.getLong(0), readResultSet.getLong(1), readResultSet.getString(2));
+              "Albums", KeySet.all(), Arrays.asList("SingerId", "AlbumId", "AlbumTitle"))) {
+        while (readResultSet.next()) {
+          System.out.printf(
+              "%d %d %s\n",
+              readResultSet.getLong(0), readResultSet.getLong(1), readResultSet.getString(2));
+        }
       }
     }
   }
@@ -571,16 +705,18 @@ public class SpannerSample {
 
   // [START spanner_read_stale_data]
   static void readStaleData(DatabaseClient dbClient) {
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
             .singleUse(TimestampBound.ofExactStaleness(15, TimeUnit.SECONDS))
-            .read("Albums", KeySet.all(), Arrays.asList("SingerId", "AlbumId", "MarketingBudget"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s\n",
-          resultSet.getLong(0),
-          resultSet.getLong(1),
-          resultSet.isNull(2) ? "NULL" : resultSet.getLong("MarketingBudget"));
+            .read(
+                "Albums", KeySet.all(), Arrays.asList("SingerId", "AlbumId", "MarketingBudget"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n",
+            resultSet.getLong(0),
+            resultSet.getLong(1),
+            resultSet.isNull(2) ? "NULL" : resultSet.getLong("MarketingBudget"));
+      }
     }
   }
   // [END spanner_read_stale_data]
@@ -588,14 +724,13 @@ public class SpannerSample {
   // [START spanner_add_timestamp_column]
   static void addCommitTimestamp(DatabaseAdminClient adminClient, DatabaseId dbId) {
     OperationFuture<Void, UpdateDatabaseDdlMetadata> op =
-        adminClient
-          .updateDatabaseDdl(
-              dbId.getInstanceId().getInstance(),
-              dbId.getDatabase(),
-              Arrays.asList(
-                  "ALTER TABLE Albums ADD COLUMN LastUpdateTime TIMESTAMP "
-                      + "OPTIONS (allow_commit_timestamp=true)"),
-              null); 
+        adminClient.updateDatabaseDdl(
+            dbId.getInstanceId().getInstance(),
+            dbId.getDatabase(),
+            Arrays.asList(
+                "ALTER TABLE Albums ADD COLUMN LastUpdateTime TIMESTAMP "
+                    + "OPTIONS (allow_commit_timestamp=true)"),
+            null);
     try {
       // Initiate the request which returns an OperationFuture.
       op.get();
@@ -649,63 +784,66 @@ public class SpannerSample {
   // [START spanner_query_data_with_timestamp_column]
   static void queryMarketingBudgetWithTimestamp(DatabaseClient dbClient) {
     // Rows without an explicit value for MarketingBudget will have a MarketingBudget equal to
-    // null.
-    ResultSet resultSet =
+    // null. A try-with-resource block is used to automatically release resources held by
+    // ResultSet.
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
             .executeQuery(
                 Statement.of(
                     "SELECT SingerId, AlbumId, MarketingBudget, LastUpdateTime FROM Albums"
-                        + " ORDER BY LastUpdateTime DESC"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s %s\n",
-          resultSet.getLong("SingerId"),
-          resultSet.getLong("AlbumId"),
-          // We check that the value is non null. ResultSet getters can only be used to retrieve
-          // non null values.
-          resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"),
-          resultSet.isNull("LastUpdateTime") ? "NULL" : resultSet.getTimestamp("LastUpdateTime"));
+                        + " ORDER BY LastUpdateTime DESC"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s %s\n",
+            resultSet.getLong("SingerId"),
+            resultSet.getLong("AlbumId"),
+            // We check that the value is non null. ResultSet getters can only be used to retrieve
+            // non null values.
+            resultSet.isNull("MarketingBudget") ? "NULL" : resultSet.getLong("MarketingBudget"),
+            resultSet.isNull("LastUpdateTime") ? "NULL" : resultSet.getTimestamp("LastUpdateTime"));
+      }
     }
   }
   // [END spanner_query_data_with_timestamp_column]
 
   static void querySingersTable(DatabaseClient dbClient) {
-    ResultSet resultSet =
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
-            .executeQuery(
-                Statement.of(
-                    "SELECT SingerId, FirstName, LastName FROM Singers"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%s %s %s\n",
-          resultSet.getLong("SingerId"),
-          resultSet.getString("FirstName"),
-          resultSet.getString("LastName"));
+            .executeQuery(Statement.of("SELECT SingerId, FirstName, LastName FROM Singers"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%s %s %s\n",
+            resultSet.getLong("SingerId"),
+            resultSet.getString("FirstName"),
+            resultSet.getString("LastName"));
+      }
     }
   }
 
   static void queryPerformancesTable(DatabaseClient dbClient) {
     // Rows without an explicit value for Revenue will have a Revenue equal to
-    // null.
-    ResultSet resultSet =
+    // null. A try-with-resource block is used to automatically release resources held by
+    // ResultSet.
+    try (ResultSet resultSet =
         dbClient
             .singleUse()
             .executeQuery(
                 Statement.of(
                     "SELECT SingerId, VenueId, EventDate, Revenue, LastUpdateTime "
-                        + "FROM Performances ORDER BY LastUpdateTime DESC"));
-    while (resultSet.next()) {
-      System.out.printf(
-          "%d %d %s %s %s\n",
-          resultSet.getLong("SingerId"),
-          resultSet.getLong("VenueId"),
-          resultSet.getDate("EventDate"),
-          // We check that the value is non null. ResultSet getters can only be used to retrieve
-          // non null values.
-          resultSet.isNull("Revenue") ? "NULL" : resultSet.getLong("Revenue"),
-          resultSet.getTimestamp("LastUpdateTime"));
+                        + "FROM Performances ORDER BY LastUpdateTime DESC"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s %s %s\n",
+            resultSet.getLong("SingerId"),
+            resultSet.getLong("VenueId"),
+            resultSet.getDate("EventDate"),
+            // We check that the value is non null. ResultSet getters can only be used to retrieve
+            // non null values.
+            resultSet.isNull("Revenue") ? "NULL" : resultSet.getLong("Revenue"),
+            resultSet.getTimestamp("LastUpdateTime"));
+      }
     }
   }
 
@@ -750,10 +888,10 @@ public class SpannerSample {
             .bind("name")
             .to(name)
             .build();
-
-    ResultSet resultSet = dbClient.singleUse().executeQuery(s);
-    while (resultSet.next()) {
-      System.out.printf("%d\n", resultSet.getLong("SingerId"));
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(s)) {
+      while (resultSet.next()) {
+        System.out.printf("%d\n", resultSet.getLong("SingerId"));
+      }
     }
     // [END spanner_query_data_with_struct]
   }
@@ -782,14 +920,15 @@ public class SpannerSample {
         Statement.newBuilder(
                 "SELECT SingerId FROM Singers WHERE "
                     + "STRUCT<FirstName STRING, LastName STRING>(FirstName, LastName) "
-                    + "IN UNNEST(@names)")
+                    + "IN UNNEST(@names) "
+                    + "ORDER BY SingerId DESC")
             .bind("names")
             .toStructArray(nameType, bandMembers)
             .build();
-
-    ResultSet resultSet = dbClient.singleUse().executeQuery(s);
-    while (resultSet.next()) {
-      System.out.printf("%d\n", resultSet.getLong("SingerId"));
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(s)) {
+      while (resultSet.next()) {
+        System.out.printf("%d\n", resultSet.getLong("SingerId"));
+      }
     }
     // [END spanner_query_data_with_array_of_struct]
   }
@@ -807,10 +946,10 @@ public class SpannerSample {
                     .to("Campbell")
                     .build())
             .build();
-
-    ResultSet resultSet = dbClient.singleUse().executeQuery(s);
-    while (resultSet.next()) {
-      System.out.printf("%d\n", resultSet.getLong("SingerId"));
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(s)) {
+      while (resultSet.next()) {
+        System.out.printf("%d\n", resultSet.getLong("SingerId"));
+      }
     }
   }
   // [END spanner_field_access_on_struct_parameters]
@@ -853,10 +992,10 @@ public class SpannerSample {
             .bind("song_info")
             .to(songInfo)
             .build();
-
-    ResultSet resultSet = dbClient.singleUse().executeQuery(s);
-    while (resultSet.next()) {
-      System.out.printf("%d %s\n", resultSet.getLong("SingerId"), resultSet.getString(1));
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(s)) {
+      while (resultSet.next()) {
+        System.out.printf("%d %s\n", resultSet.getLong("SingerId"), resultSet.getString(1));
+      }
     }
   }
   // [END spanner_field_access_on_nested_struct_parameters]
@@ -952,10 +1091,14 @@ public class SpannerSample {
                 System.out.printf("%d record inserted.\n", rowCount);
                 // Read newly inserted record.
                 sql = "SELECT FirstName, LastName FROM Singers WHERE SingerId = 11";
-                ResultSet resultSet = transaction.executeQuery(Statement.of(sql));
-                while (resultSet.next()) {
-                  System.out.printf(
-                      "%s %s\n", resultSet.getString("FirstName"), resultSet.getString("LastName"));
+                // We use a try-with-resource block to automatically release resources held by
+                // ResultSet.
+                try (ResultSet resultSet = transaction.executeQuery(Statement.of(sql))) {
+                  while (resultSet.next()) {
+                    System.out.printf(
+                        "%s %s\n",
+                        resultSet.getString("FirstName"), resultSet.getString("LastName"));
+                  }
                 }
                 return null;
               }
@@ -1012,6 +1155,28 @@ public class SpannerSample {
   }
   // [END spanner_dml_getting_started_insert]
 
+  // [START spanner_query_with_parameter]
+  static void queryWithParameter(DatabaseClient dbClient) {
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT SingerId, FirstName, LastName "
+                    + "FROM Singers "
+                    + "WHERE LastName = @lastName")
+            .bind("lastName")
+            .to("Garcia")
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong("SingerId"),
+            resultSet.getString("FirstName"),
+            resultSet.getString("LastName"));
+      }
+    }
+  }
+  // [END spanner_query_with_parameter]
+
   // [START spanner_dml_getting_started_update]
   static void writeWithTransactionUsingDml(DatabaseClient dbClient) {
     dbClient
@@ -1023,40 +1188,40 @@ public class SpannerSample {
                 // Transfer marketing budget from one album to another. We do it in a transaction to
                 // ensure that the transfer is atomic.
                 String sql1 =
-                    "SELECT MarketingBudget from Albums WHERE SingerId = 1 and AlbumId = 1";
+                    "SELECT MarketingBudget from Albums WHERE SingerId = 2 and AlbumId = 2";
                 ResultSet resultSet = transaction.executeQuery(Statement.of(sql1));
-                long album1Budget = 0;
+                long album2Budget = 0;
                 while (resultSet.next()) {
-                  album1Budget = resultSet.getLong("MarketingBudget");
+                  album2Budget = resultSet.getLong("MarketingBudget");
                 }
                 // Transaction will only be committed if this condition still holds at the time of
                 // commit. Otherwise it will be aborted and the callable will be rerun by the
                 // client library.
-                if (album1Budget >= 300000) {
+                long transfer = 200000;
+                if (album2Budget >= transfer) {
                   String sql2 =
-                      "SELECT MarketingBudget from Albums WHERE SingerId = 2 and AlbumId = 2";
+                      "SELECT MarketingBudget from Albums WHERE SingerId = 1 and AlbumId = 1";
                   ResultSet resultSet2 = transaction.executeQuery(Statement.of(sql2));
-                  long album2Budget = 0;
-                  while (resultSet.next()) {
-                    album2Budget = resultSet2.getLong("MarketingBudget");
+                  long album1Budget = 0;
+                  while (resultSet2.next()) {
+                    album1Budget = resultSet2.getLong("MarketingBudget");
                   }
-                  long transfer = 200000;
-                  album2Budget += transfer;
-                  album1Budget -= transfer;
+                  album1Budget += transfer;
+                  album2Budget -= transfer;
                   Statement updateStatement =
                       Statement.newBuilder(
-                          "UPDATE Albums "
-                              + "SET MarketingBudget = @AlbumBudget "
-                              + "WHERE SingerId = 1 and AlbumId = 1")
+                              "UPDATE Albums "
+                                  + "SET MarketingBudget = @AlbumBudget "
+                                  + "WHERE SingerId = 1 and AlbumId = 1")
                           .bind("AlbumBudget")
                           .to(album1Budget)
                           .build();
                   transaction.executeUpdate(updateStatement);
                   Statement updateStatement2 =
                       Statement.newBuilder(
-                          "UPDATE Albums "
-                              + "SET MarketingBudget = @AlbumBudget "
-                              + "WHERE SingerId = 2 and AlbumId = 2")
+                              "UPDATE Albums "
+                                  + "SET MarketingBudget = @AlbumBudget "
+                                  + "WHERE SingerId = 2 and AlbumId = 2")
                           .bind("AlbumBudget")
                           .to(album2Budget)
                           .build();
@@ -1084,11 +1249,632 @@ public class SpannerSample {
   }
   // [END spanner_dml_partitioned_delete]
 
+  // [START spanner_dml_batch_update]
+  static void updateUsingBatchDml(DatabaseClient dbClient) {
+    dbClient
+        .readWriteTransaction()
+        .run(
+            new TransactionCallable<Void>() {
+              @Override
+              public Void run(TransactionContext transaction) throws Exception {
+                List<Statement> stmts = new ArrayList<Statement>();
+                String sql =
+                    "INSERT INTO Albums "
+                        + "(SingerId, AlbumId, AlbumTitle, MarketingBudget) "
+                        + "VALUES (1, 3, 'Test Album Title', 10000) ";
+                stmts.add(Statement.of(sql));
+                sql =
+                    "UPDATE Albums "
+                        + "SET MarketingBudget = MarketingBudget * 2 "
+                        + "WHERE SingerId = 1 and AlbumId = 3";
+                stmts.add(Statement.of(sql));
+                long[] rowCounts;
+                try {
+                  rowCounts = transaction.batchUpdate(stmts);
+                } catch (SpannerBatchUpdateException e) {
+                  rowCounts = e.getUpdateCounts();
+                }
+                for (int i = 0; i < rowCounts.length; i++) {
+                  System.out.printf("%d record updated by stmt %d.\n", rowCounts[i], i);
+                }
+                return null;
+              }
+            });
+  }
+  // [END spanner_dml_batch_update]
+
+  // [START spanner_create_table_with_datatypes]
+  static void createTableWithDatatypes(DatabaseAdminClient dbAdminClient, DatabaseId id) {
+    OperationFuture<Void, UpdateDatabaseDdlMetadata> op =
+        dbAdminClient.updateDatabaseDdl(
+            id.getInstanceId().getInstance(),
+            id.getDatabase(),
+            Arrays.asList(
+                "CREATE TABLE Venues ("
+                    + "  VenueId         INT64 NOT NULL,"
+                    + "  VenueName       STRING(100),"
+                    + "  VenueInfo       BYTES(MAX),"
+                    + "  Capacity        INT64,"
+                    + "  AvailableDates  ARRAY<DATE>,"
+                    + "  LastContactDate DATE,"
+                    + "  OutdoorVenue    BOOL, "
+                    + "  PopularityScore FLOAT64, "
+                    + "  Revenue         NUMERIC, "
+                    + "  LastUpdateTime  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)"
+                    + ") PRIMARY KEY (VenueId)"),
+            null);
+    try {
+      // Initiate the request which returns an OperationFuture.
+      op.get();
+      System.out.println("Created Venues table in database: [" + id + "]");
+    } catch (ExecutionException e) {
+      // If the operation failed during execution, expose the cause.
+      throw (SpannerException) e.getCause();
+    } catch (InterruptedException e) {
+      // Throw when a thread is waiting, sleeping, or otherwise occupied,
+      // and the thread is interrupted, either before or during the activity.
+      throw SpannerExceptionFactory.propagateInterrupt(e);
+    }
+  }
+  // [END spanner_create_table_with_datatypes]
+
+  // [START spanner_insert_datatypes_data]
+  static void writeDatatypesData(DatabaseClient dbClient) {
+    List<Mutation> mutations = new ArrayList<>();
+    for (Venue venue : VENUES) {
+      mutations.add(
+          Mutation.newInsertBuilder("Venues")
+              .set("VenueId")
+              .to(venue.venueId)
+              .set("VenueName")
+              .to(venue.venueName)
+              .set("VenueInfo")
+              .to(venue.venueInfo)
+              .set("Capacity")
+              .to(venue.capacity)
+              .set("AvailableDates")
+              .to(venue.availableDates)
+              .set("LastContactDate")
+              .to(venue.lastContactDate)
+              .set("OutdoorVenue")
+              .to(venue.outdoorVenue)
+              .set("PopularityScore")
+              .to(venue.popularityScore)
+              .set("Revenue")
+              .to(venue.revenue)
+              .set("LastUpdateTime")
+              .to(Value.COMMIT_TIMESTAMP)
+              .build());
+    }
+    dbClient.write(mutations);
+  }
+  // [END spanner_insert_datatypes_data]
+
+  // [START spanner_query_with_array_parameter]
+  static void queryWithArray(DatabaseClient dbClient) {
+    Value exampleArray =
+        Value.dateArray(Arrays.asList(Date.parseDate("2020-10-01"), Date.parseDate("2020-11-01")));
+
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, AvailableDate FROM Venues v, "
+                    + "UNNEST(v.AvailableDates) as AvailableDate "
+                    + "WHERE AvailableDate in UNNEST(@availableDates)")
+            .bind("availableDates")
+            .to(exampleArray)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getDate("AvailableDate"));
+      }
+    }
+  }
+  // [END spanner_query_with_array_parameter]
+
+  // [START spanner_query_with_bool_parameter]
+  static void queryWithBool(DatabaseClient dbClient) {
+    boolean exampleBool = true;
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, OutdoorVenue FROM Venues "
+                    + "WHERE OutdoorVenue = @outdoorVenue")
+            .bind("outdoorVenue")
+            .to(exampleBool)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %b\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getBoolean("OutdoorVenue"));
+      }
+    }
+  }
+  // [END spanner_query_with_bool_parameter]
+
+  // [START spanner_query_with_bytes_parameter]
+  static void queryWithBytes(DatabaseClient dbClient) {
+    ByteArray exampleBytes =
+        ByteArray.fromBase64(BaseEncoding.base64().encode("Hello World 1".getBytes()));
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName FROM Venues " + "WHERE VenueInfo = @venueInfo")
+            .bind("venueInfo")
+            .to(exampleBytes)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s\n", resultSet.getLong("VenueId"), resultSet.getString("VenueName"));
+      }
+    }
+  }
+  // [END spanner_query_with_bytes_parameter]
+
+  // [START spanner_query_with_date_parameter]
+  static void queryWithDate(DatabaseClient dbClient) {
+    String exampleDate = "2019-01-01";
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, LastContactDate FROM Venues "
+                    + "WHERE LastContactDate < @lastContactDate")
+            .bind("lastContactDate")
+            .to(exampleDate)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getDate("LastContactDate"));
+      }
+    }
+  }
+  // [END spanner_query_with_date_parameter]
+
+  // [START spanner_query_with_float_parameter]
+  static void queryWithFloat(DatabaseClient dbClient) {
+    float exampleFloat = 0.8f;
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, PopularityScore FROM Venues "
+                    + "WHERE PopularityScore > @popularityScore")
+            .bind("popularityScore")
+            .to(exampleFloat)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %f\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getDouble("PopularityScore"));
+      }
+    }
+  }
+  // [END spanner_query_with_float_parameter]
+
+  // [START spanner_query_with_int_parameter]
+  static void queryWithInt(DatabaseClient dbClient) {
+    long exampleInt = 3000;
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, Capacity FROM Venues " + "WHERE Capacity >= @capacity")
+            .bind("capacity")
+            .to(exampleInt)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %d\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getLong("Capacity"));
+      }
+    }
+  }
+  // [END spanner_query_with_int_parameter]
+
+  // [START spanner_query_with_string_parameter]
+  static void queryWithString(DatabaseClient dbClient) {
+    String exampleString = "Venue 42";
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName FROM Venues " + "WHERE VenueName = @venueName")
+            .bind("venueName")
+            .to(exampleString)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s\n", resultSet.getLong("VenueId"), resultSet.getString("VenueName"));
+      }
+    }
+  }
+  // [END spanner_query_with_string_parameter]
+
+  // [START spanner_query_with_timestamp_parameter]
+  static void queryWithTimestampParameter(DatabaseClient dbClient) {
+    Instant exampleTimestamp = Instant.now();
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, LastUpdateTime FROM Venues "
+                    + "WHERE LastUpdateTime < @lastUpdateTime")
+            .bind("lastUpdateTime")
+            .to(exampleTimestamp.toString())
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s\n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getTimestamp("LastUpdateTime"));
+      }
+    }
+  }
+  // [END spanner_query_with_timestamp_parameter]
+
+  // [START spanner_query_with_numeric_parameter]
+  static void queryWithNumeric(DatabaseClient dbClient) {
+    BigDecimal exampleNumeric = new BigDecimal("300000");
+    Statement statement =
+        Statement.newBuilder(
+                "SELECT VenueId, VenueName, Revenue\n"
+                    + "FROM Venues\n"
+                    + "WHERE Revenue >= @revenue")
+            .bind("revenue")
+            .to(exampleNumeric)
+            .build();
+    try (ResultSet resultSet = dbClient.singleUse().executeQuery(statement)) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %s %s%n",
+            resultSet.getLong("VenueId"),
+            resultSet.getString("VenueName"),
+            resultSet.getBigDecimal("Revenue"));
+      }
+    }
+  }
+  // [END spanner_query_with_numeric_parameter]
+
+  // [START spanner_create_client_with_query_options]
+  static void clientWithQueryOptions(DatabaseId db) {
+    SpannerOptions options =
+        SpannerOptions.newBuilder()
+            .setDefaultQueryOptions(
+                db, QueryOptions.newBuilder().setOptimizerVersion("1").build())
+            .build();
+    Spanner spanner = options.getService();
+    DatabaseClient dbClient = spanner.getDatabaseClient(db);
+    try (ResultSet resultSet =
+        dbClient
+            .singleUse()
+            .executeQuery(Statement.of("SELECT SingerId, AlbumId, AlbumTitle FROM Albums"))) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+      }
+    }
+  }
+  // [END spanner_create_client_with_query_options]
+
+  // [START spanner_query_with_query_options]
+  static void queryWithQueryOptions(DatabaseClient dbClient) {
+    try (ResultSet resultSet =
+        dbClient
+            .singleUse()
+            .executeQuery(
+                Statement
+                    .newBuilder("SELECT SingerId, AlbumId, AlbumTitle FROM Albums")
+                    .withQueryOptions(QueryOptions.newBuilder().setOptimizerVersion("1").build())
+                    .build())) {
+      while (resultSet.next()) {
+        System.out.printf(
+            "%d %d %s\n", resultSet.getLong(0), resultSet.getLong(1), resultSet.getString(2));
+      }
+    }
+  }
+  // [END spanner_query_with_query_options]
+
+  // [START spanner_create_backup]
+  static void createBackup(
+      DatabaseAdminClient dbAdminClient, DatabaseId databaseId, BackupId backupId) {
+    // Set expire time to 14 days from now.
+    Timestamp expireTime = Timestamp.ofTimeMicroseconds(TimeUnit.MICROSECONDS.convert(
+        System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14), TimeUnit.MILLISECONDS));
+    Backup backup =
+        dbAdminClient
+            .newBackupBuilder(backupId)
+            .setDatabase(databaseId)
+            .setExpireTime(expireTime)
+            .build();
+    // Initiate the request which returns an OperationFuture.
+    System.out.println("Creating backup [" + backup.getId() + "]...");
+    OperationFuture<Backup, CreateBackupMetadata> op = backup.create();
+    try {
+      // Wait for the backup operation to complete.
+      backup = op.get();
+      System.out.println("Created backup [" + backup.getId() + "]");
+    } catch (ExecutionException e) {
+      throw (SpannerException) e.getCause();
+    } catch (InterruptedException e) {
+      throw SpannerExceptionFactory.propagateInterrupt(e);
+    }
+
+    // Reload the metadata of the backup from the server.
+    backup = backup.reload();
+    System.out.println(
+        String.format(
+            "Backup %s of size %d bytes was created at %s",
+            backup.getId().getName(),
+            backup.getSize(),
+            LocalDateTime.ofEpochSecond(
+                backup.getProto().getCreateTime().getSeconds(),
+                backup.getProto().getCreateTime().getNanos(),
+                OffsetDateTime.now().getOffset())).toString());
+  }
+  // [END spanner_create_backup]
+
+  // [START spanner_cancel_create_backup]
+  static void cancelCreateBackup(
+      DatabaseAdminClient dbAdminClient, DatabaseId databaseId, BackupId backupId) {
+    // Set expire time to 14 days from now.
+    Timestamp expireTime = Timestamp.ofTimeMicroseconds(TimeUnit.MICROSECONDS.convert(
+        System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14), TimeUnit.MILLISECONDS));
+
+    // Create a backup instance.
+    Backup backup =
+        dbAdminClient
+            .newBackupBuilder(backupId)
+            .setDatabase(databaseId)
+            .setExpireTime(expireTime)
+            .build();
+    // Start the creation of a backup.
+    System.out.println("Creating backup [" + backup.getId() + "]...");
+    OperationFuture<Backup, CreateBackupMetadata> op = backup.create();
+    try {
+      // Try to cancel the backup operation.
+      System.out.println("Cancelling create backup operation for [" + backup.getId() + "]...");
+      dbAdminClient.cancelOperation(op.getName());
+      // Get a polling future for the running operation. This future will regularly poll the server
+      // for the current status of the backup operation.
+      RetryingFuture<OperationSnapshot> pollingFuture = op.getPollingFuture();
+      // Wait for the operation to finish.
+      // isDone will return true when the operation is complete, regardless of whether it was
+      // successful or not.
+      while (!pollingFuture.get().isDone()) {
+        System.out.println("Waiting for the cancelled backup operation to finish...");
+        Thread.sleep(TimeUnit.MILLISECONDS.convert(5, TimeUnit.SECONDS));
+      }
+      if (pollingFuture.get().getErrorCode() == null) {
+        // Backup was created before it could be cancelled. Delete the backup.
+        backup.delete();
+      } else if (pollingFuture.get().getErrorCode().getCode() == StatusCode.Code.CANCELLED) {
+        System.out.println("Backup operation for [" + backup.getId() + "] successfully cancelled");
+      }
+    } catch (ExecutionException e) {
+      throw SpannerExceptionFactory.newSpannerException(e.getCause());
+    } catch (InterruptedException e) {
+      throw SpannerExceptionFactory.propagateInterrupt(e);
+    }
+  }
+  // [END spanner_cancel_create_backup]
+
+  // [START spanner_list_backup_operations]
+  static void listBackupOperations(InstanceAdminClient instanceAdminClient, DatabaseId databaseId) {
+    Instance instance = instanceAdminClient.getInstance(databaseId.getInstanceId().getInstance());
+    // Get create backup operations for the sample database.
+    String filter =
+        String.format(
+            "(metadata.database:%s) AND "
+                + "(metadata.@type:type.googleapis.com/"
+                + "google.spanner.admin.database.v1.CreateBackupMetadata)",
+            databaseId.getName());
+    Page<Operation> operations = instance.listBackupOperations(Options.filter(filter));
+    for (Operation op : operations.iterateAll()) {
+      try {
+        CreateBackupMetadata metadata = op.getMetadata().unpack(CreateBackupMetadata.class);
+        System.out.println(
+            String.format(
+                "Backup %s on database %s pending: %d%% complete",
+                metadata.getName(),
+                metadata.getDatabase(),
+                metadata.getProgress().getProgressPercent()));
+      } catch (InvalidProtocolBufferException e) {
+        // The returned operation does not contain CreateBackupMetadata.
+        System.err.println(e.getMessage());
+      }
+    }
+  }
+  // [END spanner_list_backup_operations]
+
+  // [START spanner_list_database_operations]
+  static void listDatabaseOperations(
+      InstanceAdminClient instanceAdminClient,
+      DatabaseAdminClient dbAdminClient,
+      InstanceId instanceId) {
+    Instance instance = instanceAdminClient.getInstance(instanceId.getInstance());
+    // Get optimize restored database operations.
+    String filter = "(metadata.@type:type.googleapis.com/"
+                    + "google.spanner.admin.database.v1.OptimizeRestoredDatabaseMetadata)";
+    for (Operation op : instance.listDatabaseOperations(Options.filter(filter)).iterateAll()) {
+      try {
+        OptimizeRestoredDatabaseMetadata metadata =
+            op.getMetadata().unpack(OptimizeRestoredDatabaseMetadata.class);
+        System.out.println(String.format(
+            "Database %s restored from backup is %d%% optimized",
+            metadata.getName(),
+            metadata.getProgress().getProgressPercent()));
+      } catch (InvalidProtocolBufferException e) {
+        // The returned operation does not contain OptimizeRestoredDatabaseMetadata.
+        System.err.println(e.getMessage());
+      }
+    }
+  }
+  // [END spanner_list_database_operations]
+
+  // [START spanner_list_backups]
+  static void listBackups(
+      InstanceAdminClient instanceAdminClient, DatabaseId databaseId, BackupId backupId) {
+    Instance instance = instanceAdminClient.getInstance(databaseId.getInstanceId().getInstance());
+    // List all backups.
+    System.out.println("All backups:");
+    for (Backup backup : instance.listBackups().iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List all backups with a specific name.
+    System.out.println(
+        String.format("All backups with backup name containing \"%s\":", backupId.getBackup()));
+    for (Backup backup : instance.listBackups(
+        Options.filter(String.format("name:%s", backupId.getBackup()))).iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List all backups for databases whose name contains a certain text.
+    System.out.println(
+        String.format(
+            "All backups for databases with a name containing \"%s\":",
+            databaseId.getDatabase()));
+    for (Backup backup : instance.listBackups(
+        Options.filter(String.format("database:%s", databaseId.getDatabase()))).iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List all backups that expire before a certain time.
+    Timestamp expireTime = Timestamp.ofTimeMicroseconds(TimeUnit.MICROSECONDS.convert(
+        System.currentTimeMillis() + TimeUnit.DAYS.toMillis(30), TimeUnit.MILLISECONDS));
+    System.out.println(String.format("All backups that expire before %s:", expireTime.toString()));
+    for (Backup backup :
+        instance.listBackups(
+            Options.filter(String.format("expire_time < \"%s\"", expireTime.toString())))
+        .iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List all backups with size greater than a certain number of bytes.
+    System.out.println("All backups with size greater than 100 bytes:");
+    for (Backup backup : instance.listBackups(Options.filter("size_bytes > 100")).iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List all backups with a create time after a certain timestamp and that are also ready.
+    Timestamp createTime = Timestamp.ofTimeMicroseconds(TimeUnit.MICROSECONDS.convert(
+        System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1), TimeUnit.MILLISECONDS));
+    System.out.println(
+        String.format(
+            "All databases created after %s and that are ready:", createTime.toString()));
+    for (Backup backup :
+        instance
+            .listBackups(Options.filter(
+                String.format("create_time >= \"%s\" AND state:READY", createTime.toString())))
+            .iterateAll()) {
+      System.out.println(backup);
+    }
+
+    // List backups using pagination.
+    System.out.println("All backups, listed using pagination:");
+    Page<Backup> page = instance.listBackups(Options.pageSize(10));
+    while (true) {
+      for (Backup backup : page.getValues()) {
+        System.out.println(backup);
+      }
+      if (!page.hasNextPage()) {
+        break;
+      }
+      page = page.getNextPage();
+    }
+  }
+  // [END spanner_list_backups]
+
+  // [START spanner_restore_backup]
+  static void restoreBackup(
+      DatabaseAdminClient dbAdminClient,
+      BackupId backupId,
+      DatabaseId sourceDatabaseId,
+      DatabaseId restoreToDatabase) {
+    Backup backup = dbAdminClient.newBackupBuilder(backupId).build();
+    // Initiate the request which returns an OperationFuture.
+    System.out.println(String.format(
+        "Restoring backup [%s] to database [%s]...",
+        backup.getId().toString(),
+        restoreToDatabase.toString()));
+    try {
+      OperationFuture<Database, RestoreDatabaseMetadata> op = backup.restore(restoreToDatabase);
+      // Wait until the database has been restored.
+      Database db = op.get();
+      // Refresh database metadata and get the restore info.
+      RestoreInfo restore = db.reload().getRestoreInfo();
+      System.out.println(
+          "Restored database ["
+              + restore.getSourceDatabase().getName()
+              + "] from ["
+              + restore.getBackup().getName()
+              + "]");
+    } catch (ExecutionException e) {
+      throw SpannerExceptionFactory.newSpannerException(e.getCause());
+    } catch (InterruptedException e) {
+      throw SpannerExceptionFactory.propagateInterrupt(e);
+    }
+  }
+  // [END spanner_restore_backup]
+
+  // [START spanner_update_backup]
+  static void updateBackup(DatabaseAdminClient dbAdminClient, BackupId backupId) {
+    // Get current backup metadata.
+    Backup backup = dbAdminClient.newBackupBuilder(backupId).build().reload();
+    // Add 30 days to the expire time.
+    // Expire time must be within 366 days of the create time of the backup.
+    Timestamp expireTime =
+        Timestamp.ofTimeMicroseconds(
+            TimeUnit.SECONDS.toMicros(backup.getExpireTime().getSeconds())
+                + TimeUnit.NANOSECONDS.toMicros(backup.getExpireTime().getNanos())
+                + TimeUnit.DAYS.toMicros(30L));
+    System.out.println(String.format(
+        "Updating expire time of backup [%s] to %s...",
+        backupId.toString(),
+        LocalDateTime.ofEpochSecond(
+            expireTime.getSeconds(),
+            expireTime.getNanos(),
+            OffsetDateTime.now().getOffset()).toString()));
+
+    // Update expire time.
+    backup = backup.toBuilder().setExpireTime(expireTime).build();
+    backup.updateExpireTime();
+    System.out.println("Updated backup [" + backupId + "]");
+  }
+  // [END spanner_update_backup]
+
+  // [START spanner_delete_backup]
+  static void deleteBackup(DatabaseAdminClient dbAdminClient, BackupId backupId) {
+    Backup backup = dbAdminClient.newBackupBuilder(backupId).build();
+    // Delete the backup.
+    System.out.println("Deleting backup [" + backupId + "]...");
+    backup.delete();
+    // Verify that the backup is deleted.
+    if (backup.exists()) {
+      System.out.println("Delete backup [" + backupId + "] failed");
+      throw new RuntimeException("Delete backup [" + backupId + "] failed");
+    } else {
+      System.out.println("Deleted backup [" + backupId + "]");
+    }
+  }
+  // [END spanner_delete_backup]
+
   static void run(
       DatabaseClient dbClient,
       DatabaseAdminClient dbAdminClient,
+      InstanceAdminClient instanceAdminClient,
       String command,
-      DatabaseId database) {
+      DatabaseId database,
+      BackupId backup) {
     switch (command) {
       case "createdatabase":
         createDatabase(dbAdminClient, database);
@@ -1195,6 +1981,9 @@ public class SpannerSample {
       case "writeusingdml":
         writeUsingDml(dbClient);
         break;
+      case "querywithparameter":
+        queryWithParameter(dbClient);
+        break;
       case "writewithtransactionusingdml":
         writeWithTransactionUsingDml(dbClient);
         break;
@@ -1203,7 +1992,80 @@ public class SpannerSample {
         break;
       case "deleteusingpartitioneddml":
         deleteUsingPartitionedDml(dbClient);
-        break;        
+        break;
+      case "updateusingbatchdml":
+        updateUsingBatchDml(dbClient);
+        break;
+      case "createtablewithdatatypes":
+        createTableWithDatatypes(dbAdminClient, database);
+        break;
+      case "writedatatypesdata":
+        writeDatatypesData(dbClient);
+        break;
+      case "querywitharray":
+        queryWithArray(dbClient);
+        break;
+      case "querywithbool":
+        queryWithBool(dbClient);
+        break;
+      case "querywithbytes":
+        queryWithBytes(dbClient);
+        break;
+      case "querywithdate":
+        queryWithDate(dbClient);
+        break;
+      case "querywithfloat":
+        queryWithFloat(dbClient);
+        break;
+      case "querywithint":
+        queryWithInt(dbClient);
+        break;
+      case "querywithstring":
+        queryWithString(dbClient);
+        break;
+      case "querywithtimestampparameter":
+        queryWithTimestampParameter(dbClient);
+        break;
+      case "querywithnumeric":
+        queryWithNumeric(dbClient);
+        break;
+      case "clientwithqueryoptions":
+        clientWithQueryOptions(database);
+        break;
+      case "querywithqueryoptions":
+        queryWithQueryOptions(dbClient);
+        break;
+      case "createbackup":
+        createBackup(dbAdminClient, database, backup);
+        break;
+      case "cancelcreatebackup":
+        cancelCreateBackup(
+            dbAdminClient,
+            database,
+            BackupId.of(backup.getInstanceId(), backup.getBackup() + "_cancel"));
+        break;
+      case "listbackupoperations":
+        listBackupOperations(instanceAdminClient, database);
+        break;
+      case "listdatabaseoperations":
+        listDatabaseOperations(instanceAdminClient, dbAdminClient, database.getInstanceId());
+        break;
+      case "listbackups":
+        listBackups(instanceAdminClient, database, backup);
+        break;
+      case "restorebackup":
+        restoreBackup(
+            dbAdminClient,
+            backup,
+            database,
+            DatabaseId.of(database.getInstanceId(), createRestoredSampleDbId(database)));
+        break;
+      case "updatebackup":
+        updateBackup(dbAdminClient, backup);
+        break;
+      case "deletebackup":
+        deleteBackup(dbAdminClient, backup);
+        break;
       default:
         printUsageAndExit();
     }
@@ -1235,7 +2097,7 @@ public class SpannerSample {
     System.err.println("    SpannerExample querywithtimestamp my-instance example-db");
     System.err.println("    SpannerExample createtablewithtimestamp my-instance example-db");
     System.err.println("    SpannerExample writewithtimestamp my-instance example-db");
-    System.err.println("    SpannerExample querysingerstable my-instance example-db");    
+    System.err.println("    SpannerExample querysingerstable my-instance example-db");
     System.err.println("    SpannerExample queryperformancestable my-instance example-db");
     System.err.println("    SpannerExample writestructdata my-instance example-db");
     System.err.println("    SpannerExample querywithstruct my-instance example-db");
@@ -1249,9 +2111,28 @@ public class SpannerSample {
     System.err.println("    SpannerExample writeandreadusingdml my-instance example-db");
     System.err.println("    SpannerExample updateusingdmlwithstruct my-instance example-db");
     System.err.println("    SpannerExample writeusingdml my-instance example-db");
+    System.err.println("    SpannerExample querywithparameter my-instance example-db");
     System.err.println("    SpannerExample writewithtransactionusingdml my-instance example-db");
     System.err.println("    SpannerExample updateusingpartitioneddml my-instance example-db");
     System.err.println("    SpannerExample deleteusingpartitioneddml my-instance example-db");
+    System.err.println("    SpannerExample updateusingbatchdml my-instance example-db");
+    System.err.println("    SpannerExample createtablewithdatatypes my-instance example-db");
+    System.err.println("    SpannerExample writedatatypesdata my-instance example-db");
+    System.err.println("    SpannerExample querywitharray my-instance example-db");
+    System.err.println("    SpannerExample querywithbool my-instance example-db");
+    System.err.println("    SpannerExample querywithbytes my-instance example-db");
+    System.err.println("    SpannerExample querywithdate my-instance example-db");
+    System.err.println("    SpannerExample querywithfloat my-instance example-db");
+    System.err.println("    SpannerExample querywithint my-instance example-db");
+    System.err.println("    SpannerExample querywithstring my-instance example-db");
+    System.err.println("    SpannerExample querywithtimestampparameter my-instance example-db");
+    System.err.println("    SpannerExample clientwithqueryoptions my-instance example-db");
+    System.err.println("    SpannerExample querywithqueryoptions my-instance example-db");
+    System.err.println("    SpannerExample createbackup my-instance example-db");
+    System.err.println("    SpannerExample listbackups my-instance example-db");
+    System.err.println("    SpannerExample listbackupoperations my-instance example-db");
+    System.err.println("    SpannerExample listdatabaseoperations my-instance example-db");
+    System.err.println("    SpannerExample restorebackup my-instance example-db");
     System.exit(1);
   }
 
@@ -1261,6 +2142,9 @@ public class SpannerSample {
     }
     // [START init_client]
     SpannerOptions options = SpannerOptions.newBuilder().build();
+    // [END init_client]
+    options = options.toBuilder().setAutoThrottleAdministrativeRequests().build();
+    // [START init_client]
     Spanner spanner = options.getService();
     try {
       String command = args[0];
@@ -1270,19 +2154,30 @@ public class SpannerSample {
       String clientProject = spanner.getOptions().getProjectId();
       if (!db.getInstanceId().getProject().equals(clientProject)) {
         System.err.println(
-            "Invalid project specified. Project in the database id should match"
-                + "the project name set in the environment variable GCLOUD_PROJECT. Expected: "
+            "Invalid project specified. Project in the database id should match the"
+                + "project name set in the environment variable GOOGLE_CLOUD_PROJECT. Expected: "
                 + clientProject);
         printUsageAndExit();
       }
+      // Generate a backup id for the sample database.
+      String backupName =
+          String.format(
+              "%s_%02d",
+              db.getDatabase(), LocalDate.now().get(ChronoField.ALIGNED_WEEK_OF_YEAR));
+      BackupId backup = BackupId.of(db.getInstanceId(), backupName);
+
       // [START init_client]
       DatabaseClient dbClient = spanner.getDatabaseClient(db);
       DatabaseAdminClient dbAdminClient = spanner.getDatabaseAdminClient();
+      InstanceAdminClient instanceAdminClient = spanner.getInstanceAdminClient();
+      // Use client here...
       // [END init_client]
-      run(dbClient, dbAdminClient, command, db);
+      run(dbClient, dbAdminClient, instanceAdminClient, command, db, backup);
+      // [START init_client]
     } finally {
       spanner.close();
     }
+    // [END init_client]
     System.out.println("Closed client");
   }
 }

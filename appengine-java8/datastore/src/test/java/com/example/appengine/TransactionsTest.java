@@ -16,7 +16,7 @@
 
 package com.example.appengine;
 
-import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static org.junit.Assert.fail;
 
 import com.google.appengine.api.datastore.DatastoreService;
@@ -126,9 +126,9 @@ public class TransactionsTest {
       // Transactions on entities in different entity groups
       txn = datastore.beginTransaction();
       tom = datastore.get(person.getKey());
-      Entity photoNotAChild = new Entity("Photo");
-      photoNotAChild.setProperty("photoUrl", "http://domain.com/path/to/photo.jpg");
-      datastore.put(txn, photoNotAChild);
+      Entity photoNotaChild = new Entity("Photo");
+      photoNotaChild.setProperty("photoUrl", "http://domain.com/path/to/photo.jpg");
+      datastore.put(txn, photoNotaChild);
 
       // Throws IllegalArgumentException because the Person entity
       // and the Photo entity belong to different entity groups.
@@ -141,6 +141,7 @@ public class TransactionsTest {
   }
 
   @Test
+  @SuppressWarnings("checkstyle:AbbreviationAsWordInName")
   public void creatingAnEntityInASpecificEntityGroup() throws Exception {
     String boardName = "my-message-board";
 
@@ -221,7 +222,7 @@ public class TransactionsTest {
     // [END uses_for_transactions_1]
 
     b = datastore.get(KeyFactory.createKey("MessageBoard", boardName));
-    assertThat((long) b.getProperty("count")).named("board.count").isEqualTo(42L);
+    assertWithMessage("board.count").that((long) b.getProperty("count")).isEqualTo(42L);
   }
 
   private Entity fetchOrCreate(String boardName) {
@@ -251,13 +252,13 @@ public class TransactionsTest {
 
     Entity board = fetchOrCreate("my-message-board");
 
-    assertThat((long) board.getProperty("count")).named("board.count").isEqualTo(7L);
+    assertWithMessage("board.count").that((long) board.getProperty("count")).isEqualTo(7L);
   }
 
   @Test
   public void usesForTransactions_fetchOrCreate_createsNew() throws Exception {
     Entity board = fetchOrCreate("my-message-board");
-    assertThat((long) board.getProperty("count")).named("board.count").isEqualTo(0L);
+    assertWithMessage("board.count").that((long) board.getProperty("count")).isEqualTo(0L);
   }
 
   @Test
@@ -287,7 +288,7 @@ public class TransactionsTest {
     txn.commit();
     // [END uses_for_transactions_3]
 
-    assertThat(count).named("board.count").isEqualTo(13L);
+    assertWithMessage("board.count").that(count).isEqualTo(13L);
   }
 
   @Test

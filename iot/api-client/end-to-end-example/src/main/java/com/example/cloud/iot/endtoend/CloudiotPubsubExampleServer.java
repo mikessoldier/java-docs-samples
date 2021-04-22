@@ -16,7 +16,6 @@
 
 package com.example.cloud.iot.endtoend;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.json.JsonFactory;
@@ -28,42 +27,42 @@ import com.google.api.services.cloudiot.v1.model.DeviceRegistry;
 import com.google.api.services.cloudiot.v1.model.EventNotificationConfig;
 import com.google.api.services.cloudiot.v1.model.GatewayConfig;
 import com.google.api.services.cloudiot.v1.model.ModifyCloudToDeviceConfigRequest;
+import com.google.auth.http.HttpCredentialsAdapter;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.pubsub.v1.AckReplyConsumer;
 import com.google.cloud.pubsub.v1.MessageReceiver;
 import com.google.cloud.pubsub.v1.Subscriber;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.pubsub.v1.ProjectSubscriptionName;
 import com.google.pubsub.v1.PubsubMessage;
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * Sample server that pushes configuration to Google Cloud IoT devices.
  *
- * <p>This example represents a server that consumes telemetry data from multiple Cloud IoT devices.
+ * This example represents a server that consumes telemetry data from multiple Cloud IoT devices.
  * The devices report telemetry data, which the server consumes from a Cloud Pub/Sub topic. The
  * server then decides whether to turn on or off individual devices fans.
  *
- * <p>If you are running this example from a Compute Engine VM, you will have to enable the Cloud
+ * If you are running this example from a Compute Engine VM, you will have to enable the Cloud
  * Pub/Sub API for your project, which you can do from the Cloud Console. Create a pubsub topic, for
  * example projects/my-project-id/topics/my-topic-name, and a subscription, for example
  * projects/my-project-id/subscriptions/my-topic-subscription.
  *
- * <p>You can then run the example with <prev> <code>
+ * You can then run the example with <prev> <code>
  * $ mvn clean compile assembly:single
  *
  * $ mvn exec:java \
  *       -Dexec.mainClass="com.example.cloud.iot.endtoend.CloudiotPubsubExampleServer" \
- *       -Dexec.args="-project_id=<your-iot-project> \
- *                 -pubsub_subscription=<your-pubsub-subscription"
+ *       -Dexec.args="-project_id=your-iot-project \
+ *       -pubsub_subscription=your-pubsub-subscription"
  *
  * </code> </prev>
  */
@@ -75,10 +74,10 @@ public class CloudiotPubsubExampleServer {
 
   /** Represents the state of the server. */
   public CloudiotPubsubExampleServer() throws GeneralSecurityException, IOException {
-    GoogleCredential credential =
-        GoogleCredential.getApplicationDefault().createScoped(CloudIotScopes.all());
+    GoogleCredentials credential =
+        GoogleCredentials.getApplicationDefault().createScoped(CloudIotScopes.all());
     JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    HttpRequestInitializer init = new RetryHttpInitializerWrapper(credential);
+    HttpRequestInitializer init = new HttpCredentialsAdapter(credential);
     this.service =
         new CloudIot.Builder(GoogleNetHttpTransport.newTrustedTransport(), jsonFactory, init)
             .setApplicationName(APP_NAME)
@@ -89,10 +88,10 @@ public class CloudiotPubsubExampleServer {
   public static void createRegistry(
       String cloudRegion, String projectId, String registryName, String pubsubTopicPath)
       throws GeneralSecurityException, IOException {
-    GoogleCredential credential =
-        GoogleCredential.getApplicationDefault().createScoped(CloudIotScopes.all());
+    GoogleCredentials credential =
+        GoogleCredentials.getApplicationDefault().createScoped(CloudIotScopes.all());
     JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    HttpRequestInitializer init = new RetryHttpInitializerWrapper(credential);
+    HttpRequestInitializer init = new HttpCredentialsAdapter(credential);
     final CloudIot service =
         new CloudIot.Builder(GoogleNetHttpTransport.newTrustedTransport(), jsonFactory, init)
             .setApplicationName(APP_NAME)
@@ -117,10 +116,10 @@ public class CloudiotPubsubExampleServer {
   /** Delete this registry from Cloud IoT. */
   public static void deleteRegistry(String cloudRegion, String projectId, String registryName)
       throws GeneralSecurityException, IOException {
-    GoogleCredential credential =
-        GoogleCredential.getApplicationDefault().createScoped(CloudIotScopes.all());
+    GoogleCredentials credential =
+        GoogleCredentials.getApplicationDefault().createScoped(CloudIotScopes.all());
     JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    HttpRequestInitializer init = new RetryHttpInitializerWrapper(credential);
+    HttpRequestInitializer init = new HttpCredentialsAdapter(credential);
     final CloudIot service =
         new CloudIot.Builder(GoogleNetHttpTransport.newTrustedTransport(), jsonFactory, init)
             .setApplicationName(APP_NAME)
@@ -138,10 +137,10 @@ public class CloudiotPubsubExampleServer {
   public static void deleteDevice(
       String deviceId, String projectId, String cloudRegion, String registryName)
       throws GeneralSecurityException, IOException {
-    GoogleCredential credential =
-        GoogleCredential.getApplicationDefault().createScoped(CloudIotScopes.all());
+    GoogleCredentials credential =
+        GoogleCredentials.getApplicationDefault().createScoped(CloudIotScopes.all());
     JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    HttpRequestInitializer init = new RetryHttpInitializerWrapper(credential);
+    HttpRequestInitializer init = new HttpCredentialsAdapter(credential);
     final CloudIot service =
         new CloudIot.Builder(GoogleNetHttpTransport.newTrustedTransport(), jsonFactory, init)
             .setApplicationName(APP_NAME)
@@ -161,10 +160,10 @@ public class CloudiotPubsubExampleServer {
       String projectId, String cloudRegion, String registryName, String deviceId)
       throws GeneralSecurityException, IOException {
     // [START create_device]
-    GoogleCredential credential =
-        GoogleCredential.getApplicationDefault().createScoped(CloudIotScopes.all());
+    GoogleCredentials credential =
+        GoogleCredentials.getApplicationDefault().createScoped(CloudIotScopes.all());
     JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    HttpRequestInitializer init = new RetryHttpInitializerWrapper(credential);
+    HttpRequestInitializer init = new HttpCredentialsAdapter(credential);
     final CloudIot service =
         new CloudIot.Builder(GoogleNetHttpTransport.newTrustedTransport(), jsonFactory, init)
             .setApplicationName(APP_NAME)

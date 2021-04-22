@@ -27,20 +27,48 @@
   <parent>
     <groupId>com.google.cloud.samples</groupId>
     <artifactId>shared-configuration</artifactId>
-    <version>1.0.10</version>
+    <version>1.0.22</version>
   </parent>
 
   <properties>
     <maven.compiler.target>1.8</maven.compiler.target>
     <maven.compiler.source>1.8</maven.compiler.source>
   </properties>
-  
+
   <dependencies>
+<!-- [START iam_java_quickstart_dependency] -->
+    <dependency>
+      <groupId>com.google.apis</groupId>
+      <artifactId>google-api-services-cloudresourcemanager</artifactId>
+      <version>v1-rev20210331-1.31.0</version><!-- v1 required here, v2 is different - DO NOT UPDATE to v2 -->
+    </dependency>
+    <dependency>
+      <groupId>com.google.auth</groupId>
+      <artifactId>google-auth-library-oauth2-http</artifactId>
+      <version>0.25.4</version>
+    </dependency>
+<!-- [START iam_java_dependency] -->
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-iam</artifactId>
-      <version>v1-rev247-1.23.0</version>
+      <version>v1-rev20210325-1.31.0</version>
     </dependency>
+<!-- [END iam_java_dependency] -->
+<!-- [END iam_java_quickstart_dependency] -->
+<!-- [START iamcredentials_java_dependency]-->
+    <dependency>
+      <groupId>com.google.apis</groupId>
+      <artifactId>google-api-services-iamcredentials</artifactId>
+      <version>v1-rev20210326-1.31.0</version>
+    </dependency>
+<!-- [END iamcredentials_java_dependency]-->
+<!-- [START troubleshooter_java_dependency]-->
+    <dependency>
+      <groupId>com.google.apis</groupId>
+      <artifactId>google-api-services-policytroubleshooter</artifactId>
+      <version>v1-rev20210319-1.31.0</version>
+    </dependency>
+<!-- [END troubleshooter_java_dependency]-->
     <dependency>
         <groupId>commons-cli</groupId>
         <artifactId>commons-cli</artifactId>
@@ -51,15 +79,21 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.12</version>
+      <version>4.13.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.google.truth</groupId>
       <artifactId>truth</artifactId>
-      <version>0.40</version>
+      <version>1.1.2</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.hamcrest</groupId>
+      <artifactId>hamcrest-library</artifactId>
+      <version>2.2</version>
+      <scope>test</scope>
+      </dependency>
   </dependencies>
 
   <build>
@@ -67,12 +101,12 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>1.4.0</version>
+        <version>3.0.0</version>
         <configuration>
-          <mainClass>com.google.iam.snippets.GrantableRoles</mainClass>
+          <mainClass>iam.snippets.Quickstart</mainClass>
         </configuration>
       </plugin>
     </plugins>
   </build>
-  
+
 </project>

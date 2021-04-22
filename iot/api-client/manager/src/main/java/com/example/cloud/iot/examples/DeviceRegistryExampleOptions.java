@@ -16,6 +16,7 @@
 
 package com.example.cloud.iot.examples;
 
+import javax.annotation.Nullable;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -26,15 +27,17 @@ import org.apache.commons.cli.ParseException;
 
 /** Command line options for the Device Manager example. */
 public class DeviceRegistryExampleOptions {
+  static final String helpMessage = "Showing help";
   static final Options options = new Options();
   String projectId;
-  String ecPublicKeyFile = "ec_public.pem";
-  String rsaCertificateFile = "rsa_cert.pem";
+  String ecPublicKeyFile = null;
+  String rsaCertificateFile = null;
   String cloudRegion = "us-central1";
   String command = "help";
   String commandData = "Specify with --data";
   String configuration = "Specify with -configuration";
   String deviceId; // Default to UUID?
+  String gatewayId;
   String pubsubTopic;
   String registryName;
   String member;
@@ -42,7 +45,7 @@ public class DeviceRegistryExampleOptions {
   long version = 0;
 
   /** Construct an DeviceRegistryExampleOptions class from command line flags. */
-  public static DeviceRegistryExampleOptions fromFlags(String[] args) {
+  public static @Nullable DeviceRegistryExampleOptions fromFlags(String... args) {
     // Required arguments
     options.addOption(
         Option.builder()
@@ -51,6 +54,7 @@ public class DeviceRegistryExampleOptions {
             .hasArg()
             .desc(
                 "Command to run:"
+                    + "\n\tclear-registry"
                     + "\n\tcreate-iot-topic" // TODO: Descriptions or too verbose?
                     + "\n\tcreate-rsa"
                     + "\n\tcreate-es"
@@ -68,7 +72,12 @@ public class DeviceRegistryExampleOptions {
                     + "\n\tpatch-device-rsa"
                     + "\n\tset-config"
                     + "\n\tset-iam-permissions"
-                    + "\n\tsend-command")
+                    + "\n\tsend-command"
+                    + "\n\tcreate-gateway"
+                    + "\n\tbind-device-to-gateway"
+                    + "\n\tunbind-device-from-gateway"
+                    + "\n\tlist-gateways"
+                    + "\n\tlist-devices-for-gateway")
             .required()
             .build());
 
@@ -125,6 +134,13 @@ public class DeviceRegistryExampleOptions {
     options.addOption(
         Option.builder()
             .type(String.class)
+            .longOpt("gateway_id")
+            .hasArg()
+            .desc("Name for your Device.")
+            .build());
+    options.addOption(
+        Option.builder()
+            .type(String.class)
             .longOpt("data")
             .hasArg()
             .desc("The command data (string or JSON) to send to the specified device.")
@@ -162,12 +178,12 @@ public class DeviceRegistryExampleOptions {
     CommandLine commandLine;
     try {
       commandLine = parser.parse(options, args);
+
       DeviceRegistryExampleOptions res = new DeviceRegistryExampleOptions();
 
       res.command = commandLine.getOptionValue("command");
-
-      if (res.command.equals("help") || res.command.equals("")) {
-        throw new ParseException("Invalid command, showing help.");
+      if ("help".equals(res.command) || "".equals(res.command)) {
+        throw new ParseException(String.format("%s, you entered %s", helpMessage, res.command));
       }
 
       if (commandLine.hasOption("cloud_region")) {
@@ -178,6 +194,10 @@ public class DeviceRegistryExampleOptions {
       }
       if (commandLine.hasOption("device_id")) {
         res.deviceId = commandLine.getOptionValue("device_id");
+      }
+
+      if (commandLine.hasOption("device_id")) {
+        res.gatewayId = commandLine.getOptionValue("gateway_id");
       }
 
       if (commandLine.hasOption("project_id")) {
@@ -211,11 +231,14 @@ public class DeviceRegistryExampleOptions {
       if (commandLine.hasOption("device_id")) {
         res.deviceId = commandLine.getOptionValue("device_id");
       }
+      if (commandLine.hasOption("gateway_id")) {
+        res.gatewayId = commandLine.getOptionValue("gateway_id");
+      }
       if (commandLine.hasOption("configuration")) {
         res.configuration = commandLine.getOptionValue("configuration");
       }
       if (commandLine.hasOption("version")) {
-        res.version = new Long(commandLine.getOptionValue("version")).longValue();
+        res.version = Long.parseLong(commandLine.getOptionValue("version"));
       }
       if (commandLine.hasOption("member")) {
         res.member = commandLine.getOptionValue("member");
@@ -230,11 +253,14 @@ public class DeviceRegistryExampleOptions {
       String footer = "\nhttps://cloud.google.com/iot-core";
 
       HelpFormatter formatter = new HelpFormatter();
-      formatter.printHelp(
-              "DeviceRegistryExample", header, options, footer, true);
+      formatter.printHelp("DeviceRegistryExample", header, options, footer, true);
 
       System.err.println(e.getMessage());
       return null;
     }
+  }
+
+  public String toString() {
+    return options.toString();
   }
 }

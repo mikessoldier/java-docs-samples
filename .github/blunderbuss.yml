@@ -1,0 +1,27 @@
+assign_issues:
+  - GoogleCloudPlatform/java-samples-reviewers
+assign_issues_by:
+- labels:
+  - 'api: logging'
+  - 'api: clouderrorreporting'
+  to:
+  - simonz130
+- labels:
+  - 'api: cloudiot'
+  to:
+  - attilagargyan
+  - simoncsaba-g
+
+assign_prs:
+  - GoogleCloudPlatform/java-samples-reviewers
+assign_prs_by:
+- labels:
+  - 'api: logging'
+  - 'api: clouderrorreporting'
+  to:
+  - simonz130
+- labels:
+  - 'api: cloudiot'
+  to:
+  - attilagargyan
+  - simoncsaba-g

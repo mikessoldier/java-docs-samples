@@ -16,7 +16,7 @@
 
 package com.google.cloud.vision.samples.facedetect;
 
-import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import com.google.api.services.vision.v1.model.BoundingPoly;
 import com.google.api.services.vision.v1.model.FaceAnnotation;
@@ -27,54 +27,57 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Unit tests for {@link FaceDetectApp}.
- */
+/** Unit tests for {@link FaceDetectApp}. */
 @RunWith(JUnit4.class)
 public class FaceDetectAppTest {
-  @Test public void annotateWithFaces_manyFaces_outlinesFaces() throws Exception {
+  @Test
+  public void annotateWithFaces_manyFaces_outlinesFaces() throws Exception {
     // Arrange
     ImmutableList<FaceAnnotation> faces =
         ImmutableList.of(
             new FaceAnnotation()
                 .setFdBoundingPoly(
-                    new BoundingPoly().setVertices(ImmutableList.of(
-                        new Vertex().setX(10).setY(5),
-                        new Vertex().setX(20).setY(5),
-                        new Vertex().setX(20).setY(25),
-                        new Vertex().setX(10).setY(25)))),
+                    new BoundingPoly()
+                        .setVertices(
+                            ImmutableList.of(
+                                new Vertex().setX(10).setY(5),
+                                new Vertex().setX(20).setY(5),
+                                new Vertex().setX(20).setY(25),
+                                new Vertex().setX(10).setY(25)))),
             new FaceAnnotation()
                 .setFdBoundingPoly(
-                    new BoundingPoly().setVertices(ImmutableList.of(
-                        new Vertex().setX(60).setY(50),
-                        new Vertex().setX(70).setY(60),
-                        new Vertex().setX(50).setY(60)))));
+                    new BoundingPoly()
+                        .setVertices(
+                            ImmutableList.of(
+                                new Vertex().setX(60).setY(50),
+                                new Vertex().setX(70).setY(60),
+                                new Vertex().setX(50).setY(60)))));
     BufferedImage img = new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB);
 
     // Act
     FaceDetectApp.annotateWithFaces(img, faces);
 
     // Assert
-    assertThat(img.getRGB(10, 5) & 0x00ff00)
-        .named("img face #1 vertex (10, 5) green channel")
+    assertWithMessage("img face #1 vertex (10, 5) green channel")
+        .that(img.getRGB(10, 5) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(20, 5) & 0x00ff00)
-        .named("img face #1 vertex (20, 5) green channel")
+    assertWithMessage("img face #1 vertex (20, 5) green channel")
+        .that(img.getRGB(20, 5) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(20, 25) & 0x00ff00)
-        .named("img face #1 vertex (20, 25) green channel")
+    assertWithMessage("img face #1 vertex (20, 25) green channel")
+        .that(img.getRGB(20, 25) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(10, 25) & 0x00ff00)
-        .named("img face #1 vertex (10, 25) green channel")
+    assertWithMessage("img face #1 vertex (10, 25) green channel")
+        .that(img.getRGB(10, 25) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(60, 50) & 0x00ff00)
-        .named("img face #2 vertex (60, 50) green channel")
+    assertWithMessage("img face #2 vertex (60, 50) green channel")
+        .that(img.getRGB(60, 50) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(70, 60) & 0x00ff00)
-        .named("img face #2 vertex (70, 60) green channel")
+    assertWithMessage("img face #2 vertex (70, 60) green channel")
+        .that(img.getRGB(70, 60) & 0x00ff00)
         .isEqualTo(0x00ff00);
-    assertThat(img.getRGB(50, 60) & 0x00ff00)
-        .named("img face #2 vertex (50, 60) green channel")
+    assertWithMessage("img face #2 vertex (50, 60) green channel")
+        .that(img.getRGB(50, 60) & 0x00ff00)
         .isEqualTo(0x00ff00);
   }
 }

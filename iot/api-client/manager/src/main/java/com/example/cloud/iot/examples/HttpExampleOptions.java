@@ -16,6 +16,7 @@
 
 package com.example.cloud.iot.examples;
 
+import javax.annotation.Nullable;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -25,6 +26,7 @@ import org.apache.commons.cli.ParseException;
 
 /** Command line options for the HTTP example. */
 public class HttpExampleOptions {
+  static final Options options = new Options();
   String projectId;
   String registryId;
   String deviceId;
@@ -38,8 +40,7 @@ public class HttpExampleOptions {
   String messageType = "event";
 
   /** Construct an HttpExampleOptions class from command line flags. */
-  public static HttpExampleOptions fromFlags(String[] args) {
-    Options options = new Options();
+  public static @Nullable HttpExampleOptions fromFlags(String... args) {
     // Required arguments
     options.addOption(
         Option.builder()
@@ -161,5 +162,9 @@ public class HttpExampleOptions {
       System.err.println(e.getMessage());
       return null;
     }
+  }
+
+  public String toString() {
+    return options.toString();
   }
 }

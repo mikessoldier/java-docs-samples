@@ -40,18 +40,15 @@ public final class FeaturedJobsSearchSample {
   private static final String DEFAULT_PROJECT_ID =
       "projects/" + System.getenv("GOOGLE_CLOUD_PROJECT");
 
-  private static CloudTalentSolution talentSolutionClient = JobServiceQuickstart
-      .getTalentSolutionClient();
+  private static CloudTalentSolution talentSolutionClient =
+      JobServiceQuickstart.getTalentSolutionClient();
 
   // [START featured_job]
 
-  /**
-   * Creates a job as featured.
-   */
+  /** Creates a job as featured. */
   public static Job generateFeaturedJob(String companyName) throws IOException {
     // requisition id should be a unique Id in your system.
-    String requisitionId =
-        "featuredJob:" + String.valueOf(new Random().nextLong());
+    String requisitionId = "featuredJob:" + String.valueOf(new Random().nextLong());
     ApplicationInfo applicationInfo =
         new ApplicationInfo().setUris(Arrays.asList("http://careers.google.com"));
 
@@ -61,8 +58,7 @@ public final class FeaturedJobsSearchSample {
             .setTitle("Software Engineer")
             .setCompanyName(companyName)
             .setApplicationInfo(applicationInfo)
-            .setDescription(
-                "Design, develop, test, deploy, maintain and improve software.")
+            .setDescription("Design, develop, test, deploy, maintain and improve software.")
             // Featured job is the job with positive promotion value
             .setPromotionValue(2);
     System.out.println("Job generated: " + job);
@@ -72,10 +68,9 @@ public final class FeaturedJobsSearchSample {
 
   // [START search_featured_job]
 
-  /**
-   * Searches featured jobs.
-   */
-  public static void searchFeaturedJobs(String companyName) throws IOException {
+  /** Searches featured jobs. */
+  public static void searchFeaturedJobs(String companyName)
+      throws IOException, InterruptedException {
     // Make sure to set the requestMetadata the same as the associated search request
     RequestMetadata requestMetadata =
         new RequestMetadata()
@@ -104,7 +99,9 @@ public final class FeaturedJobsSearchSample {
             .jobs()
             .search(DEFAULT_PROJECT_ID, searchJobsRequest)
             .execute();
-    System.out.println(response);
+
+    Thread.sleep(1000);
+    System.out.printf("Featured jobs results: %s\n", response);
   }
   // [END search_featured_job]
 
@@ -113,12 +110,13 @@ public final class FeaturedJobsSearchSample {
     String companyName = BasicCompanySample.createCompany(companyToBeCreated).getName();
 
     Job jobToBeCreated = generateFeaturedJob(companyName);
-    String jobName = BasicJobSample.createJob(jobToBeCreated).getName();
+    final String jobName = BasicJobSample.createJob(jobToBeCreated).getName();
 
     // Wait several seconds for post processing
-    Thread.sleep(10000);
+    Thread.sleep(5000);
     searchFeaturedJobs(companyName);
 
+    Thread.sleep(5000);
     BasicJobSample.deleteJob(jobName);
     BasicCompanySample.deleteCompany(companyName);
   }

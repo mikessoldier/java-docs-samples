@@ -26,14 +26,14 @@ limitations under the License.
   <parent>
     <groupId>com.google.cloud.samples</groupId>
     <artifactId>shared-configuration</artifactId>
-    <version>1.0.10</version>
+    <version>1.0.22</version>
   </parent>
 
   <properties>
     <maven.compiler.target>1.8</maven.compiler.target>
     <maven.compiler.source>1.8</maven.compiler.source>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <opencensus.version>0.19.2</opencensus.version>
+    <opencensus.version>0.28.3</opencensus.version>
   </properties>
 
   <!-- Include the BOM to ensure compatibility across multiple google-cloud-* libraries -->
@@ -41,8 +41,8 @@ limitations under the License.
     <dependencies>
       <dependency>
         <groupId>com.google.cloud</groupId>
-        <artifactId>google-cloud-bom</artifactId>
-        <version>0.73.0-alpha</version>
+        <artifactId>libraries-bom</artifactId>
+        <version>20.1.0</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -51,26 +51,22 @@ limitations under the License.
   <!-- End of BOM -->
   <dependencies>
     <dependency>
-      <!-- Version auto-managed by BOM -->
       <groupId>com.google.cloud</groupId>
       <artifactId>google-cloud-spanner</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>com.google.guava</groupId>
-          <artifactId>guava-jdk5</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.opencensus</groupId>
-          <artifactId>opencensus-api</artifactId>
-        </exclusion>
-      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>com.google.api.grpc</groupId>
+      <artifactId>proto-google-cloud-spanner-admin-instance-v1</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.api.grpc</groupId>
+      <artifactId>proto-google-cloud-spanner-v1</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.api.grpc</groupId>
+      <artifactId>proto-google-cloud-spanner-admin-database-v1</artifactId>
     </dependency>
 
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>20.0</version>
-    </dependency>
     <dependency>
         <groupId>io.opencensus</groupId>
         <artifactId>opencensus-api</artifactId>
@@ -129,25 +125,26 @@ limitations under the License.
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.13-beta-2</version>
+      <version>4.13.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.google.truth</groupId>
       <artifactId>truth</artifactId>
-      <version>0.42</version>
+      <version>1.1.2</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
   <build>
+    <finalName>spanner-google-cloud-samples</finalName>
     <plugins>
       <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>2.5.5</version>
+        <version>3.3.0</version>
         <configuration>
-          <descriptorRefs>
-            <descriptorRef>jar-with-dependencies</descriptorRef>
-          </descriptorRefs>
+          <descriptors>
+            <descriptor>assembly-descriptor.xml</descriptor>
+          </descriptors>
           <archive>
             <manifest>
               <mainClass>com.example.spanner.SpannerSample</mainClass>
@@ -167,7 +164,7 @@ limitations under the License.
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
-        <version>2.19.1</version>
+        <version>3.0.0-M5</version>
         <configuration>
           <systemPropertyVariables>
             <spanner.test.instance>default-instance</spanner.test.instance>

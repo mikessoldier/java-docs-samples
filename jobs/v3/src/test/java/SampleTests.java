@@ -39,6 +39,7 @@ import org.junit.runners.JUnit4;
 public class SampleTests {
 
   private static ByteArrayOutputStream bout;
+  private long timeInMillis;
 
   @BeforeClass
   public static void setUp() {
@@ -50,52 +51,57 @@ public class SampleTests {
   @Test
   public void autoCompleteSampleTest() throws Exception {
     AutoCompleteSample.main();
-    assertThat(bout.toString()).containsMatch(
-        ".*completionResults.*\"suggestion\":\"Google\",\"type\":\"COMPANY_NAME\"}.*\n"
-            + ".*completionResults.*\"suggestion\":\"Software Engineer\",\"type\":\"JOB_TITLE\".*\n"
-            + ".*completionResults.*\"suggestion\":\"Software Engineer\",\"type\":\"JOB_TITLE\".*\n"
-    );
+    assertThat(bout.toString())
+        .containsMatch(
+            ".*completionResults.*\"suggestion\":"
+                + "\"Google\",\"type\":\"COMPANY_NAME\"}.*\n"
+                + ".*completionResults.*\"suggestion\""
+                + ":\"Software Engineer\",\"type\":\"JOB_TITLE\".*\n"
+                + ".*completionResults.*\"suggestion\""
+                + ":\"Software Engineer\",\"type\":\"JOB_TITLE\".*\n");
     bout.reset();
   }
 
   @Test
   public void basicCompanySampleTest() throws Exception {
     BasicCompanySample.main();
-    assertThat(bout.toString()).containsMatch(
-        ".*Company generated:.*\n"
-            + ".*Company created:.*\n"
-            + ".*Company existed:.*\n"
-            + ".*Company updated:.*elgoog.*\n"
-            + ".*Company updated:.*changedTitle.*\n"
-            + ".*Company deleted.*\n"
-    );
+    assertThat(bout.toString())
+        .containsMatch(
+            ".*Company generated:.*\n"
+                + ".*Company created:.*\n"
+                + ".*Company existed:.*\n"
+                + ".*Company updated:.*elgoog.*\n"
+                + ".*Company updated:.*changedTitle.*\n"
+                + ".*Company deleted.*\n");
     bout.reset();
   }
 
   @Test
   public void basicJobSampleTest() throws Exception {
     BasicJobSample.main();
-    assertThat(bout.toString()).containsMatch(
-        ".*Job generated:.*\n"
-            + ".*Job created:.*\n"
-            + ".*Job existed:.*\n"
-            + ".*Job updated:.*changedDescription.*\n"
-            + ".*Job updated:.*changedJobTitle.*\n"
-            + ".*Job deleted.*\n"
-    );
+    assertThat(bout.toString())
+        .containsMatch(
+            ".*Job generated:.*\n"
+                + ".*Job created:.*\n"
+                + ".*Job existed:.*\n"
+                + ".*Job updated:.*changedDescription.*\n"
+                + ".*Job updated:.*changedJobTitle.*\n"
+                + ".*Job deleted.*\n");
     bout.reset();
   }
 
   @Test
   public void batchOperationSampleTest() throws Exception {
     BatchOperationSample.main();
-    assertThat(bout.toString()).containsMatch(".*"
-        + "Company generated:.*\nCompany created:.*\n"
-        + "Create Job:.*\nCreate Job:.*\n"
-        + "Update Job:.*Engineer in Mountain View.*\nUpdate Job:.*Engineer in Mountain View.*\n"
-        + "Job deleted.*\nJob deleted.*\n"
-        + "Company deleted.*\n"
-    );
+    assertThat(bout.toString())
+        .containsMatch(
+            ".*"
+                + "Company generated:.*\nCompany created:.*\n"
+                + "Create Job:.*\nCreate Job:.*\n"
+                + "Update Job:.*Engineer in Mountain View.*\n"
+                + "Update Job:.*Engineer in Mountain View.*\n"
+                + "Job deleted.*\nJob deleted.*\n"
+                + "Company deleted.*\n");
     bout.reset();
   }
 
@@ -103,57 +109,58 @@ public class SampleTests {
   public void commuteSearchSampleTest() throws Exception {
     CommuteSearchSample.main();
     String result = bout.toString();
-    assertThat(result).containsMatch(".*matchingJobs.*commuteInfo.*");
-    assertThat(result).containsMatch(".*matchingJobs.*1600 Amphitheatre Pkwy.*");
+    assertThat(result).contains("Search jobs for commute results:");
     bout.reset();
   }
 
   @Test
   public void customAttributeSampleTest() throws Exception {
     CustomAttributeSample.main();
-    assertThat(bout.toString())
-        .containsMatch(
-            ".*Job created:.*jobWithACustomAttribute.*\n"
-                + ".*matchingJobs.*jobWithACustomAttribute.*\n"
-                + ".*matchingJobs.*jobWithACustomAttribute.*\n"
-                + ".*matchingJobs.*jobWithACustomAttribute.*\n");
+
+    // wait for 10 seconds to elapse and then run it.
+    timeInMillis = System.currentTimeMillis();
+    while (System.currentTimeMillis() < timeInMillis + 10000) {
+      Thread.sleep(1000);
+    }
+
+    assertThat(bout.toString()).contains("Job created:");
+    assertThat(bout.toString()).contains("Custom search job results (String value):");
+    assertThat(bout.toString()).contains("Custom search job results (Long value):");
+    assertThat(bout.toString()).contains("Custom search job results (multiple value):");
     bout.reset();
   }
 
   @Test
   public void emailAlertSearchSampleTest() throws Exception {
     EmailAlertSearchSample.main();
-    assertThat(bout.toString()).contains("matchingJobs");
+    assertThat(bout.toString()).contains("Search jobs for alert results:");
     bout.reset();
   }
 
   @Test
   public void featuredJobSearchSampleTest() throws Exception {
     FeaturedJobsSearchSample.main();
-    assertThat(bout.toString()).contains("matchingJobs");
+    assertThat(bout.toString()).contains("Featured jobs results:");
     bout.reset();
   }
 
   @Test
   public void generalSearchSampleTest() throws Exception {
     GeneralSearchSample.main();
-    assertThat(bout.toString())
-        .containsMatch(
-            ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n"
-                + ".*matchingJobs.*\n");
+    assertThat(bout.toString()).contains("Simple search jobs results:");
+    assertThat(bout.toString()).contains("Category search jobs results:");
+    assertThat(bout.toString()).contains("Employee type search jobs results:");
+    assertThat(bout.toString()).contains("Search results on jobs with a date range:");
+    assertThat(bout.toString()).contains("Search results on jobs with a language code:");
+    assertThat(bout.toString()).contains("Search results by display name of company:");
+    assertThat(bout.toString()).contains("Search results by compensation:");
     bout.reset();
   }
 
   @Test
   public void histogramSampleTest() throws Exception {
     HistogramSample.main();
-    assertThat(bout.toString()).contains("COMPANY_ID");
-    assertThat(bout.toString()).contains("someFieldName1");
+    assertThat(bout.toString()).contains("Histogram search results:");
     bout.reset();
   }
 
@@ -163,17 +170,19 @@ public class SampleTests {
     assertThat(bout.toString()).contains("Request Id is");
     bout.reset();
   }
-  
+
   @Test
   public void locationSearchSampleTest() throws Exception {
     LocationSearchSample.main();
-    assertThat(bout.toString()).containsMatch(
-        ".*locationFilters.*matchingJobs.*\n"
-            + ".*locationFilters.*matchingJobs.*\n"
-            + ".*locationFilters.*matchingJobs.*\n"
-            + ".*locationFilters.*matchingJobs.*\n"
-            + ".*locationFilters.*matchingJobs.*\n"
-    );
+    assertThat(bout.toString()).contains("Basic location search results:");
+
+    assertThat(bout.toString()).contains("Keyword location search results:");
+
+    assertThat(bout.toString()).contains("City locations search results:");
+
+    assertThat(bout.toString()).contains("Multiple locations search results:");
+
+    assertThat(bout.toString()).contains("Broadening locations search results:");
     bout.reset();
   }
 }

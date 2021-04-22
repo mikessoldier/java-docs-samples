@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.FileContent;
 import com.google.api.client.http.GenericUrl;
@@ -29,10 +28,14 @@ import com.google.api.services.discovery.Discovery;
 import com.google.api.services.discovery.model.JsonSchema;
 import com.google.api.services.discovery.model.RestDescription;
 import com.google.api.services.discovery.model.RestMethod;
+import com.google.auth.http.HttpCredentialsAdapter;
+import com.google.auth.oauth2.GoogleCredentials;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 /*
- * Sample code for doing Cloud Machine Learning Engine online prediction in Java.
+ * Sample code for sending an online prediction request to Cloud Machine Learning Engine.
  */
 
 public class OnlinePredictionSample {
@@ -62,12 +65,15 @@ public class OnlinePredictionSample {
     HttpContent content = new FileContent(contentType, requestBodyFile);
     System.out.println(content.getLength());
 
-    GoogleCredential credential = GoogleCredential.getApplicationDefault();
-    HttpRequestFactory requestFactory = httpTransport.createRequestFactory(credential);
+    List<String> scopes = new ArrayList<>();
+    scopes.add("https://www.googleapis.com/auth/cloud-platform");
+
+    GoogleCredentials credential = GoogleCredentials.getApplicationDefault().createScoped(scopes);
+    HttpRequestFactory requestFactory =
+        httpTransport.createRequestFactory(new HttpCredentialsAdapter(credential));
     HttpRequest request = requestFactory.buildRequest(method.getHttpMethod(), url, content);
 
     String response = request.execute().parseAsString();
     System.out.println(response);
   }
 }
-
